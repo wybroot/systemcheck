@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}告警管理 - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">告警管理</h4>
+        <div>
+            <button class="btn btn-success" onclick="handleAllPending()">
+                <i class="bi bi-check-all"></i> 全部已处理
+            </button>
+        </div>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="icon bg-danger bg-opacity-10 text-danger me-3">
+                        <i class="bi bi-exclamation-circle"></i>
+                    </div>
+                    <div>
+                        <div class="value" id="pendingCount">-</div>
+                        <div class="label">待处理</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="icon bg-danger bg-opacity-10 text-danger me-3">
+                        <i class="bi bi-x-octagon"></i>
+                    </div>
+                    <div>
+                        <div class="value" id="criticalCount">-</div>
+                        <div class="label">严重告警</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="icon bg-warning bg-opacity-10 text-warning me-3">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <div>
+                        <div class="value" id="warningCount">-</div>
+                        <div class="label">警告告警</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="icon bg-success bg-opacity-10 text-success me-3">
+                        <i class="bi bi-check-circle"></i>
+                    </div>
+                    <div>
+                        <div class="value" id="handledCount">-</div>
+                        <div class="label">已处理</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <select class="form-select" id="filterStatus">
+                        <option value="">全部状态</option>
+                        <option value="PENDING">待处理</option>
+                        <option value="HANDLED">已处理</option>
+                        <option value="IGNORED">已忽略</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" id="filterLevel">
+                        <option value="">全部级别</option>
+                        <option value="CRITICAL">严重</option>
+                        <option value="WARNING">警告</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-outline-primary" onclick="loadAlerts()">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
+                </div>
+            </div>
+            
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="selectAll"></th>
+                        <th>服务器</th>
+                        <th>类型</th>
+                        <th>级别</th>
+                        <th>内容</th>
+                        <th>状态</th>
+                        <th>时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="alertList">
+                    <tr><td colspan="8" class="text-center text-muted">加载中...</td></tr>
+                </tbody>
+            </table>
+            
+            <nav id="pagination">
+                <ul class="pagination justify-content-center"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+let currentPage = 1;
+
+function loadStats() {
+    axios.get('/alerts/api/stats')
+        .then(response => {
+            const data = response.data;
+            document.getElementById('pendingCount').textContent = data.pending;
+            document.getElementById('criticalCount').textContent = data.critical_pending;
+            document.getElementById('warningCount').textContent = data.warning_pending;
+            document.getElementById('handledCount').textContent = data.handled;
+        });
+}
+
+function loadAlerts(page = 1) {
+    currentPage = page;
+    const params = {
+        page: page,
+        per_page: 20,
+        status: document.getElementById('filterStatus').value,
+        level: document.getElementById('filterLevel').value
+    };
+    
+    axios.get('/alerts/api/list', { params: params })
+        .then(response => {
+            const data = response.data;
+            let html = '';
+            
+            if (data.alerts && data.alerts.length > 0) {
+                data.alerts.forEach(alert => {
+                    const levelClass = alert.alert_level === 'CRITICAL' ? 'text-danger' : 'text-warning';
+                    const statusClass = alert.status === 'PENDING' ? 'status-critical' : 
+                                       alert.status === 'HANDLED' ? 'status-ok' : 'status-warning';
+                    
+                    html += `<tr>
+                        <td><input type="checkbox" class="alert-checkbox" value="${alert.id}"></td>
+                        <td>${alert.server_hostname || '-'}</td>
+                        <td>${alert.alert_type}</td>
+                        <td class="${levelClass}">${alert.alert_level}</td>
+                        <td>${alert.alert_content || '-'}</td>
+                        <td><span class="status-badge ${statusClass}">${alert.status}</span></td>
+                        <td>${new Date(alert.created_at).toLocaleString()}</td>
+                        <td>
+                            ${alert.status === 'PENDING' ? `
+                            <button class="btn btn-sm btn-outline-success btn-action" onclick="handleAlert(${alert.id})">
+                                <i class="bi bi-check"></i> 处理
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary btn-action" onclick="ignoreAlert(${alert.id})">
+                                <i class="bi bi-eye-slash"></i> 忽略
+                            </button>
+                            ` : '-'}
+                        </td>
+                    </tr>`;
+                });
+            } else {
+                html = '<tr><td colspan="8" class="text-center text-muted">暂无告警</td></tr>';
+            }
+            
+            document.getElementById('alertList').innerHTML = html;
+        });
+}
+
+function handleAlert(alertId) {
+    axios.post(`/alerts/api/${alertId}/handle`, {})
+        .then(response => {
+            loadAlerts(currentPage);
+            loadStats();
+        });
+}
+
+function ignoreAlert(alertId) {
+    axios.post(`/alerts/api/${alertId}/ignore`)
+        .then(response => {
+            loadAlerts(currentPage);
+            loadStats();
+        });
+}
+
+function handleAllPending() {
+    if (confirm('确定将所有待处理告警标记为已处理吗？')) {
+        axios.get('/alerts/api/list?status=PENDING&per_page=1000')
+            .then(response => {
+                const alertIds = response.data.alerts.map(a => a.id);
+                if (alertIds.length > 0) {
+                    return axios.post('/alerts/api/batch/handle', { alert_ids: alertIds });
+                }
+            })
+            .then(() => {
+                loadAlerts();
+                loadStats();
+            });
+    }
+}
+
+document.getElementById('selectAll').addEventListener('change', function() {
+    document.querySelectorAll('.alert-checkbox').forEach(cb => {
+        cb.checked = this.checked;
+    });
+});
+
+loadStats();
+loadAlerts();
+</script>
+{% endblock %}

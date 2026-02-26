@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}服务器管理 - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">服务器管理</h4>
+        <a href="{{ url_for('servers.add_server') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> 添加服务器
+        </a>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <input type="text" class="form-control" id="searchIp" placeholder="搜索IP地址">
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" id="filterEnv">
+                        <option value="">全部环境</option>
+                        <option value="生产">生产</option>
+                        <option value="测试">测试</option>
+                        <option value="开发">开发</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" id="filterStatus">
+                        <option value="">全部状态</option>
+                        <option value="1">在线</option>
+                        <option value="0">下线</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-outline-primary" onclick="loadServers()">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
+                </div>
+                <div class="col-md-3 text-end">
+                    <button class="btn btn-success" onclick="batchInspect()">
+                        <i class="bi bi-play-fill"></i> 批量巡检
+                    </button>
+                </div>
+            </div>
+            
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="selectAll"></th>
+                        <th>主机名</th>
+                        <th>IP地址</th>
+                        <th>环境</th>
+                        <th>业务</th>
+                        <th>状态</th>
+                        <th>最近巡检</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="serverList">
+                    <tr><td colspan="8" class="text-center text-muted">加载中...</td></tr>
+                </tbody>
+            </table>
+            
+            <nav id="pagination">
+                <ul class="pagination justify-content-center"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+let currentPage = 1;
+
+function loadServers(page = 1) {
+    currentPage = page;
+    const params = {
+        page: page,
+        per_page: 20,
+        ip: document.getElementById('searchIp').value,
+        env: document.getElementById('filterEnv').value,
+        status: document.getElementById('filterStatus').value
+    };
+    
+    axios.get('/api/servers', { params: params })
+        .then(response => {
+            const data = response.data;
+            let html = '';
+            
+            if (data.servers && data.servers.length > 0) {
+                data.servers.forEach(server => {
+                    const statusBadge = server.status === 1 ? 
+                        '<span class="status-badge status-ok">在线</span>' : 
+                        '<span class="status-badge status-critical">下线</span>';
+                    
+                    html += `<tr>
+                        <td><input type="checkbox" class="server-checkbox" value="${server.id}"></td>
+                        <td>${server.hostname}</td>
+                        <td>${server.ip}</td>
+                        <td>${server.env || '-'}</td>
+                        <td>${server.business || '-'}</td>
+                        <td>${statusBadge}</td>
+                        <td>-</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary btn-action" onclick="inspectServer(${server.id})">
+                                <i class="bi bi-play-fill"></i> 巡检
+                            </button>
+                            <button class="btn btn-sm btn-outline-info btn-action" onclick="viewServer(${server.id})">
+                                <i class="bi bi-eye"></i> 详情
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary btn-action" onclick="editServer(${server.id})">
+                                <i class="bi bi-pencil"></i> 编辑
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger btn-action" onclick="deleteServer(${server.id})">
+                                <i class="bi bi-trash"></i> 删除
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+            } else {
+                html = '<tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>';
+            }
+            
+            document.getElementById('serverList').innerHTML = html;
+            renderPagination(data);
+        })
+        .catch(error => {
+            console.error('Load servers failed:', error);
+        });
+}
+
+function renderPagination(data) {
+    if (data.pages <= 1) {
+        document.getElementById('pagination').innerHTML = '';
+        return;
+    }
+    
+    let html = '<ul class="pagination justify-content-center">';
+    
+    if (currentPage > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadServers(${currentPage - 1})">上一页</a></li>`;
+    }
+    
+    for (let i = 1; i <= data.pages; i++) {
+        if (i === currentPage) {
+            html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+        } else {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="loadServers(${i})">${i}</a></li>`;
+        }
+    }
+    
+    if (currentPage < data.pages) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadServers(${currentPage + 1})">下一页</a></li>`;
+    }
+    
+    html += '</ul>';
+    document.getElementById('pagination').innerHTML = html;
+}
+
+function inspectServer(serverId) {
+    axios.post('/api/inspections/run', { server_ids: [serverId] })
+        .then(response => {
+            alert('巡检任务已提交');
+            window.location.href = '/inspections';
+        })
+        .catch(error => {
+            alert('巡检失败: ' + error.response?.data?.error || error.message);
+        });
+}
+
+function batchInspect() {
+    const checkboxes = document.querySelectorAll('.server-checkbox:checked');
+    const serverIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    if (serverIds.length === 0) {
+        alert('请选择要巡检的服务器');
+        return;
+    }
+    
+    if (confirm(`确定要对选中的 ${serverIds.length} 台服务器执行巡检吗？`)) {
+        axios.post('/api/inspections/run', { server_ids: serverIds })
+            .then(response => {
+                alert('批量巡检任务已提交');
+                window.location.href = '/inspections';
+            })
+            .catch(error => {
+                alert('巡检失败: ' + error.response?.data?.error || error.message);
+            });
+    }
+}
+
+function viewServer(serverId) {
+    window.location.href = `/servers/${serverId}`;
+}
+
+function editServer(serverId) {
+    window.location.href = `/servers/${serverId}/edit`;
+}
+
+function deleteServer(serverId) {
+    if (confirm('确定要删除这台服务器吗？')) {
+        axios.delete(`/api/servers/${serverId}`)
+            .then(response => {
+                alert('删除成功');
+                loadServers(currentPage);
+            })
+            .catch(error => {
+                alert('删除失败: ' + error.response?.data?.error || error.message);
+            });
+    }
+}
+
+document.getElementById('selectAll').addEventListener('change', function() {
+    document.querySelectorAll('.server-checkbox').forEach(cb => {
+        cb.checked = this.checked;
+    });
+});
+
+loadServers();
+</script>
+{% endblock %}

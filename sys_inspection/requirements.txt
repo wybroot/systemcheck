@@ -1,0 +1,11 @@
+Flask==3.0.0
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+psycopg2-binary==2.9.9
+redis==5.0.1
+minio==7.2.3
+gunicorn==21.2.0
+python-dotenv==1.0.0
+Werkzeug==3.0.1
+APScheduler==3.10.4
+requests==2.31.0

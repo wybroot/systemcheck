@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}巡检记录 - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">巡检记录</h4>
+        <a href="{{ url_for('inspections.run_inspection') }}" class="btn btn-primary">
+            <i class="bi bi-play-fill"></i> 执行巡检
+        </a>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <input type="text" class="form-control" id="searchServer" placeholder="搜索服务器">
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" id="filterStatus">
+                        <option value="">全部状态</option>
+                        <option value="OK">正常</option>
+                        <option value="WARNING">警告</option>
+                        <option value="CRITICAL">严重</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-outline-primary" onclick="loadInspections()">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
+                </div>
+            </div>
+            
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>服务器</th>
+                        <th>巡检时间</th>
+                        <th>CPU使用率</th>
+                        <th>内存使用率</th>
+                        <th>磁盘使用率</th>
+                        <th>状态</th>
+                        <th>耗时</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="inspectionList">
+                    <tr><td colspan="8" class="text-center text-muted">加载中...</td></tr>
+                </tbody>
+            </table>
+            
+            <nav id="pagination">
+                <ul class="pagination justify-content-center"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+let currentPage = 1;
+
+function loadInspections(page = 1) {
+    currentPage = page;
+    const params = {
+        page: page,
+        per_page: 20,
+        status: document.getElementById('filterStatus').value
+    };
+    
+    axios.get('/api/inspections', { params: params })
+        .then(response => {
+            const data = response.data;
+            let html = '';
+            
+            if (data.inspections && data.inspections.length > 0) {
+                data.inspections.forEach(ins => {
+                    const statusClass = ins.status === 'OK' ? 'status-ok' : 
+                                       ins.status === 'WARNING' ? 'status-warning' : 'status-critical';
+                    
+                    html += `<tr>
+                        <td>${ins.server_hostname || '-'}</td>
+                        <td>${new Date(ins.inspection_time).toLocaleString()}</td>
+                        <td>${ins.cpu_usage ? ins.cpu_usage + '%' : '-'}</td>
+                        <td>${ins.memory_usage ? ins.memory_usage + '%' : '-'}</td>
+                        <td>${ins.disk_usage ? ins.disk_usage + '%' : '-'}</td>
+                        <td><span class="status-badge ${statusClass}">${ins.status}</span></td>
+                        <td>${ins.duration ? ins.duration + 's' : '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-info btn-action" onclick="viewDetail(${ins.id})">
+                                <i class="bi bi-eye"></i> 详情
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+            } else {
+                html = '<tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>';
+            }
+            
+            document.getElementById('inspectionList').innerHTML = html;
+            renderPagination(data);
+        });
+}
+
+function renderPagination(data) {
+    if (data.pages <= 1) {
+        document.getElementById('pagination').innerHTML = '';
+        return;
+    }
+    
+    let html = '<ul class="pagination justify-content-center">';
+    
+    if (currentPage > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadInspections(${currentPage - 1})">上一页</a></li>`;
+    }
+    
+    for (let i = 1; i <= data.pages; i++) {
+        if (i === currentPage) {
+            html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+        } else {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="loadInspections(${i})">${i}</a></li>`;
+        }
+    }
+    
+    if (currentPage < data.pages) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadInspections(${currentPage + 1})">下一页</a></li>`;
+    }
+    
+    html += '</ul>';
+    document.getElementById('pagination').innerHTML = html;
+}
+
+function viewDetail(inspectionId) {
+    window.location.href = `/inspections/${inspectionId}`;
+}
+
+loadInspections();
+</script>
+{% endblock %}

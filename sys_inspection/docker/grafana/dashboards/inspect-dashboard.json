@@ -1,0 +1,283 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "red", "value": 95 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "title": "CPU使用率",
+      "type": "gauge",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawSql": "SELECT s.hostname, i.cpu_usage FROM inspections i JOIN servers s ON i.server_id = s.id WHERE i.created_at > NOW() - INTERVAL '1 hour' ORDER BY i.created_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 85 },
+              { "color": "red", "value": 95 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "title": "内存使用率",
+      "type": "gauge",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawSql": "SELECT s.hostname, i.memory_usage FROM inspections i JOIN servers s ON i.server_id = s.id WHERE i.created_at > NOW() - INTERVAL '1 hour' ORDER BY i.created_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 85 },
+              { "color": "red", "value": 95 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "title": "磁盘使用率",
+      "type": "gauge",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawSql": "SELECT s.hostname, i.disk_usage FROM inspections i JOIN servers s ON i.server_id = s.id WHERE i.created_at > NOW() - INTERVAL '1 hour' ORDER BY i.created_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "CPU/内存趋势 (24小时)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "time_series",
+          "rawSql": "SELECT i.inspection_time AS time, s.hostname AS metric, i.cpu_usage AS value FROM inspections i JOIN servers s ON i.server_id = s.id WHERE i.created_at > NOW() - INTERVAL '24 hours' ORDER BY time;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "待处理告警",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) FROM alerts WHERE status = 'PENDING';",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [
+                { "options": { "OK": { "color": "green", "index": 0, "text": "正常" }, "WARNING": { "color": "yellow", "index": 1, "text": "警告" }, "CRITICAL": { "color": "red", "index": 2, "text": "严重" } }, "type": "value" }
+              ]}
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "title": "最近巡检结果",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawSql": "SELECT s.hostname AS \"服务器\", s.ip AS \"IP\", i.cpu_usage AS \"CPU(%)\", i.memory_usage AS \"内存(%)\", i.disk_usage AS \"磁盘(%)\", i.status AS \"状态\", i.inspection_time AS \"巡检时间\" FROM inspections i JOIN servers s ON i.server_id = s.id ORDER BY i.inspection_time DESC LIMIT 20;",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["inspect", "monitoring"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "服务器巡检监控大盘",
+  "uid": "inspect-dashboard",
+  "version": 1,
+  "weekStart": ""
+}

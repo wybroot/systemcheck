@@ -1,0 +1,9 @@
+ip,hostname,ssh_port,ssh_user,business,env,services,tags
+192.168.1.10,web-server-01,22,root,电商平台,生产,nginx|php-fpm|mysql,web
+192.168.1.11,web-server-02,22,root,电商平台,生产,nginx|php-fpm|redis,web
+192.168.1.20,db-master,22,root,电商平台,生产,mysql,database
+192.168.1.21,db-slave,22,root,电商平台,生产,mysql,database
+192.168.1.30,cache-server,22,root,电商平台,生产,redis|memcached,cache
+192.168.1.40,app-server-01,22,root,内部系统,生产,tomcat|java,app
+192.168.1.50,mq-server,22,root,内部系统,生产,rabbitmq,mq
+192.168.1.100,test-server-01,22,root,测试环境,测试,nginx|mysql,test

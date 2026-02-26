@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}定时任务 - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">定时任务</h4>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addJobModal">
+            <i class="bi bi-plus-lg"></i> 添加任务
+        </button>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>任务ID</th>
+                        <th>触发规则</th>
+                        <th>下次执行</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="jobList">
+                    <tr><td colspan="5" class="text-center text-muted">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addJobModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加定时任务</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="jobForm">
+                    <div class="mb-3">
+                        <label class="form-label">任务ID</label>
+                        <input type="text" class="form-control" id="jobId" required placeholder="如: daily-inspection">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">任务类型</label>
+                        <select class="form-select" id="jobType">
+                            <option value="cron">Cron表达式</option>
+                            <option value="interval">间隔执行</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="cronField">
+                        <label class="form-label">Cron表达式</label>
+                        <input type="text" class="form-control" id="cronExpr" placeholder="分 时 日 月 周">
+                        <small class="text-muted">例: 0 8 * * * (每天8点执行)</small>
+                    </div>
+                    <div class="mb-3" id="intervalField" style="display:none">
+                        <label class="form-label">间隔时间(分钟)</label>
+                        <input type="number" class="form-control" id="intervalMinutes" placeholder="60">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">目标服务器</label>
+                        <select class="form-select" id="serverSelect" multiple>
+                            <option value="">加载中...</option>
+                        </select>
+                        <small class="text-muted">不选择则为全部服务器</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addJob()">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function loadJobs() {
+    axios.get('/schedule/api/list')
+        .then(response => {
+            const data = response.data;
+            let html = '';
+            
+            if (data.jobs && data.jobs.length > 0) {
+                data.jobs.forEach(job => {
+                    html += `<tr>
+                        <td>${job.id}</td>
+                        <td><code>${job.trigger}</code></td>
+                        <td>${job.next_run_time ? new Date(job.next_run_time).toLocaleString() : '-'}</td>
+                        <td><span class="status-badge status-ok">运行中</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary btn-action" onclick="runJob('${job.id}')">
+                                <i class="bi bi-play-fill"></i> 执行
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger btn-action" onclick="removeJob('${job.id}')">
+                                <i class="bi bi-trash"></i> 删除
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+            } else {
+                html = '<tr><td colspan="5" class="text-center text-muted">暂无定时任务</td></tr>';
+            }
+            
+            document.getElementById('jobList').innerHTML = html;
+        });
+}
+
+function loadServers() {
+    axios.get('/api/servers?per_page=100')
+        .then(response => {
+            const servers = response.data.servers || [];
+            let html = '';
+            servers.forEach(s => {
+                html += `<option value="${s.id}">${s.hostname} (${s.ip})</option>`;
+            });
+            document.getElementById('serverSelect').innerHTML = html;
+        });
+}
+
+function addJob() {
+    const jobId = document.getElementById('jobId').value;
+    const jobType = document.getElementById('jobType').value;
+    const serverSelect = document.getElementById('serverSelect');
+    const serverIds = Array.from(serverSelect.selectedOptions).map(o => parseInt(o.value));
+    
+    const data = {
+        id: jobId,
+        type: jobType,
+        server_ids: serverIds.length > 0 ? serverIds : null
+    };
+    
+    if (jobType === 'cron') {
+        data.cron = document.getElementById('cronExpr').value;
+    } else {
+        data.interval = parseInt(document.getElementById('intervalMinutes').value);
+    }
+    
+    axios.post('/schedule/api/add', data)
+        .then(response => {
+            alert('任务添加成功');
+            bootstrap.Modal.getInstance(document.getElementById('addJobModal')).hide();
+            loadJobs();
+        })
+        .catch(error => {
+            alert('添加失败: ' + (error.response?.data?.error || error.message));
+        });
+}
+
+function runJob(jobId) {
+    if (confirm('确定要立即执行此任务吗？')) {
+        axios.post(`/schedule/api/run/${jobId}`)
+            .then(response => {
+                alert('任务执行完成');
+            })
+            .catch(error => {
+                alert('执行失败: ' + (error.response?.data?.error || error.message));
+            });
+    }
+}
+
+function removeJob(jobId) {
+    if (confirm('确定要删除此任务吗？')) {
+        axios.delete(`/schedule/api/remove/${jobId}`)
+            .then(response => {
+                alert('任务已删除');
+                loadJobs();
+            })
+            .catch(error => {
+                alert('删除失败: ' + (error.response?.data?.error || error.message));
+            });
+    }
+}
+
+document.getElementById('jobType').addEventListener('change', function() {
+    document.getElementById('cronField').style.display = this.value === 'cron' ? 'block' : 'none';
+    document.getElementById('intervalField').style.display = this.value === 'interval' ? 'block' : 'none';
+});
+
+loadJobs();
+loadServers();
+</script>
+{% endblock %}

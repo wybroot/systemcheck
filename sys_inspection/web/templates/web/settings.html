@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}系统设置 - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">系统设置</h4>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">告警阈值设置</h6>
+                </div>
+                <div class="card-body">
+                    <form id="thresholdForm">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">CPU警告阈值(%)</label>
+                                <input type="number" class="form-control" id="cpuWarning" value="80">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">CPU临界阈值(%)</label>
+                                <input type="number" class="form-control" id="cpuCritical" value="95">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">内存警告阈值(%)</label>
+                                <input type="number" class="form-control" id="memWarning" value="85">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">内存临界阈值(%)</label>
+                                <input type="number" class="form-control" id="memCritical" value="95">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">磁盘警告阈值(%)</label>
+                                <input type="number" class="form-control" id="diskWarning" value="85">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">磁盘临界阈值(%)</label>
+                                <input type="number" class="form-control" id="diskCritical" value="95">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Swap警告阈值(%)</label>
+                                <input type="number" class="form-control" id="swapWarning" value="50">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Swap临界阈值(%)</label>
+                                <input type="number" class="form-control" id="swapCritical" value="80">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">巡检超时时间(秒)</label>
+                                <input type="number" class="form-control" id="timeout" value="300">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">报告保留天数</label>
+                                <input type="number" class="form-control" id="retention" value="180">
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="saveThreshold()">保存设置</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">通知渠道配置</h6>
+                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addChannelModal">
+                        <i class="bi bi-plus"></i> 添加渠道
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="channelList">
+                        <p class="text-muted">加载中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addChannelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加通知渠道</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="channelForm">
+                    <div class="mb-3">
+                        <label class="form-label">渠道类型</label>
+                        <select class="form-select" id="channelType" onchange="toggleChannelFields()">
+                            <option value="dingtalk">钉钉</option>
+                            <option value="wecom">企业微信</option>
+                            <option value="email">邮件</option>
+                            <option value="webhook">Webhook</option>
+                        </select>
+                    </div>
+                    
+                    <div id="dingtalkFields">
+                        <div class="mb-3">
+                            <label class="form-label">Webhook地址</label>
+                            <input type="text" class="form-control" id="dingtalkWebhook" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">签名密钥(可选)</label>
+                            <input type="text" class="form-control" id="dingtalkSecret" placeholder="SECxxx">
+                        </div>
+                    </div>
+                    
+                    <div id="wecomFields" style="display:none">
+                        <div class="mb-3">
+                            <label class="form-label">Webhook地址</label>
+                            <input type="text" class="form-control" id="wecomWebhook" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx">
+                        </div>
+                    </div>
+                    
+                    <div id="emailFields" style="display:none">
+                        <div class="mb-3">
+                            <label class="form-label">SMTP服务器</label>
+                            <input type="text" class="form-control" id="smtpHost" placeholder="smtp.example.com">
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">端口</label>
+                                <input type="number" class="form-control" id="smtpPort" value="25">
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label">用户名</label>
+                                <input type="text" class="form-control" id="smtpUser">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">密码</label>
+                            <input type="password" class="form-control" id="smtpPass">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">发件人地址</label>
+                            <input type="text" class="form-control" id="fromAddr">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">收件人地址(多个用逗号分隔)</label>
+                            <input type="text" class="form-control" id="toAddrs">
+                        </div>
+                    </div>
+                    
+                    <div id="webhookFields" style="display:none">
+                        <div class="mb-3">
+                            <label class="form-label">URL</label>
+                            <input type="text" class="form-control" id="webhookUrl">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">请求方法</label>
+                            <select class="form-select" id="webhookMethod">
+                                <option value="POST">POST</option>
+                                <option value="GET">GET</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">请求头(JSON)</label>
+                            <textarea class="form-control" id="webhookHeaders" rows="2">{"Content-Type": "application/json"}</textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveChannel()">保存</button>
+                <button type="button" class="btn btn-outline-info" onclick="testChannel()">测试发送</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function loadSettings() {
+    axios.get('/settings/api/threshold')
+        .then(response => {
+            const data = response.data;
+            document.getElementById('cpuWarning').value = data.cpu_usage_warning || 80;
+            document.getElementById('cpuCritical').value = data.cpu_usage_critical || 95;
+            document.getElementById('memWarning').value = data.memory_usage_warning || 85;
+            document.getElementById('memCritical').value = data.memory_usage_critical || 95;
+            document.getElementById('diskWarning').value = data.disk_usage_warning || 85;
+            document.getElementById('diskCritical').value = data.disk_usage_critical || 95;
+            document.getElementById('swapWarning').value = data.swap_usage_warning || 50;
+            document.getElementById('swapCritical').value = data.swap_usage_critical || 80;
+            document.getElementById('timeout').value = data.inspection_timeout || 300;
+            document.getElementById('retention').value = data.report_retention_days || 180;
+        });
+    
+    loadChannels();
+}
+
+function loadChannels() {
+    axios.get('/settings/api/notify')
+        .then(response => {
+            const channels = response.data.channels || [];
+            let html = '';
+            
+            if (channels.length > 0) {
+                channels.forEach(channel => {
+                    const icon = channel.type === 'dingtalk' ? 'bi-chat-dots' :
+                                channel.type === 'wecom' ? 'bi-wechat' :
+                                channel.type === 'email' ? 'bi-envelope' : 'bi-link-45deg';
+                    
+                    html += `<div class="d-flex justify-content-between align-items-center p-2 bg-light rounded mb-2">
+                        <div>
+                            <i class="bi ${icon} me-2"></i>
+                            <strong>${channel.name || channel.type}</strong>
+                            <small class="text-muted ms-2">${channel.enabled ? '已启用' : '已禁用'}</small>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-info" onclick="testChannelType('${channel.type}')">测试</button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteChannel('${channel.type}')">删除</button>
+                        </div>
+                    </div>`;
+                });
+            } else {
+                html = '<p class="text-muted">暂无通知渠道</p>';
+            }
+            
+            document.getElementById('channelList').innerHTML = html;
+        });
+}
+
+function saveThreshold() {
+    const data = {
+        cpu_usage_warning: document.getElementById('cpuWarning').value,
+        cpu_usage_critical: document.getElementById('cpuCritical').value,
+        memory_usage_warning: document.getElementById('memWarning').value,
+        memory_usage_critical: document.getElementById('memCritical').value,
+        disk_usage_warning: document.getElementById('diskWarning').value,
+        disk_usage_critical: document.getElementById('diskCritical').value,
+        swap_usage_warning: document.getElementById('swapWarning').value,
+        swap_usage_critical: document.getElementById('swapCritical').value,
+        inspection_timeout: document.getElementById('timeout').value,
+        report_retention_days: document.getElementById('retention').value
+    };
+    
+    axios.put('/settings/api/threshold', data)
+        .then(response => {
+            alert('设置已保存');
+        })
+        .catch(error => {
+            alert('保存失败: ' + error.message);
+        });
+}
+
+function toggleChannelFields() {
+    const type = document.getElementById('channelType').value;
+    document.getElementById('dingtalkFields').style.display = type === 'dingtalk' ? 'block' : 'none';
+    document.getElementById('wecomFields').style.display = type === 'wecom' ? 'block' : 'none';
+    document.getElementById('emailFields').style.display = type === 'email' ? 'block' : 'none';
+    document.getElementById('webhookFields').style.display = type === 'webhook' ? 'block' : 'none';
+}
+
+function saveChannel() {
+    const type = document.getElementById('channelType').value;
+    const data = { type: type };
+    
+    if (type === 'dingtalk') {
+        data.webhook = document.getElementById('dingtalkWebhook').value;
+        data.secret = document.getElementById('dingtalkSecret').value;
+    } else if (type === 'wecom') {
+        data.webhook = document.getElementById('wecomWebhook').value;
+    } else if (type === 'email') {
+        data.smtp_host = document.getElementById('smtpHost').value;
+        data.smtp_port = document.getElementById('smtpPort').value;
+        data.smtp_user = document.getElementById('smtpUser').value;
+        data.smtp_pass = document.getElementById('smtpPass').value;
+        data.from_addr = document.getElementById('fromAddr').value;
+        data.to_addrs = document.getElementById('toAddrs').value;
+    } else if (type === 'webhook') {
+        data.url = document.getElementById('webhookUrl').value;
+        data.method = document.getElementById('webhookMethod').value;
+        data.headers = document.getElementById('webhookHeaders').value;
+    }
+    
+    axios.post('/settings/api/notify/channel', data)
+        .then(response => {
+            alert('渠道已保存');
+            loadChannels();
+        })
+        .catch(error => {
+            alert('保存失败: ' + error.message);
+        });
+}
+
+function deleteChannel(type) {
+    if (confirm('确定要删除此通知渠道吗？')) {
+        axios.delete(`/settings/api/notify/channel/${type}`)
+            .then(response => {
+                loadChannels();
+            });
+    }
+}
+
+function testChannel() {
+    const type = document.getElementById('channelType').value;
+    testChannelType(type);
+}
+
+function testChannelType(type) {
+    axios.post(`/settings/api/notify/test/${type}`)
+        .then(response => {
+            alert('测试通知已发送');
+        })
+        .catch(error => {
+            alert('测试失败: ' + (error.response?.data?.error || error.message));
+        });
+}
+
+loadSettings();
+</script>
+{% endblock %}

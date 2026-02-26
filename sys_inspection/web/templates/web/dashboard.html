@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">仪表盘</h4>
+        <button class="btn btn-primary" onclick="runAllInspection()">
+            <i class="bi bi-play-fill"></i> 一键巡检
+        </button>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="icon bg-primary bg-opacity-10 text-primary me-3">
+                        <i class="bi bi-server"></i>
+                    </div>
+                    <div>
+                        <div class="value" id="totalServers">-</div>
+                        <div class="label">服务器总数</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="icon bg-success bg-opacity-10 text-success me-3">
+                        <i class="bi bi-check-circle"></i>
+                    </div>
+                    <div>
+                        <div class="value" id="statusOk">-</div>
+                        <div class="label">状态正常</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="icon bg-warning bg-opacity-10 text-warning me-3">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <div>
+                        <div class="value" id="statusWarning">-</div>
+                        <div class="label">状态警告</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="icon bg-danger bg-opacity-10 text-danger me-3">
+                        <i class="bi bi-x-circle"></i>
+                    </div>
+                    <div>
+                        <div class="value" id="statusCritical">-</div>
+                        <div class="label">状态严重</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card p-3">
+                <h6 class="mb-3">近7日巡检趋势</h6>
+                <div id="trendChart" style="height: 300px;"></div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3">
+                <h6 class="mb-3">状态分布</h6>
+                <div id="statusChart" style="height: 300px;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">最近巡检记录</h6>
+                    <a href="{{ url_for('inspections.list_inspections') }}" class="btn btn-sm btn-outline-primary">查看全部</a>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>服务器</th>
+                                <th>时间</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentInspections">
+                            <tr><td colspan="3" class="text-center text-muted">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">待处理告警</h6>
+                    <span class="badge bg-danger" id="alertCount">0</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>服务器</th>
+                                <th>类型</th>
+                                <th>内容</th>
+                                <th>时间</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pendingAlerts">
+                            <tr><td colspan="4" class="text-center text-muted">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function loadDashboard() {
+    axios.get('/api/dashboard')
+        .then(response => {
+            const data = response.data;
+            document.getElementById('totalServers').textContent = data.total_servers || 0;
+            document.getElementById('statusOk').textContent = data.status_counts?.OK || 0;
+            document.getElementById('statusWarning').textContent = data.status_counts?.WARNING || 0;
+            document.getElementById('statusCritical').textContent = data.status_counts?.CRITICAL || 0;
+            
+            if (data.recent_inspections && data.recent_inspections.length > 0) {
+                let html = '';
+                data.recent_inspections.forEach(ins => {
+                    const statusClass = ins.status === 'OK' ? 'status-ok' : 
+                                       ins.status === 'WARNING' ? 'status-warning' : 'status-critical';
+                    html += `<tr>
+                        <td>${ins.server_hostname || '-'}</td>
+                        <td>${new Date(ins.inspection_time).toLocaleString()}</td>
+                        <td><span class="status-badge ${statusClass}">${ins.status}</span></td>
+                    </tr>`;
+                });
+                document.getElementById('recentInspections').innerHTML = html;
+            }
+            
+            initCharts(data);
+        })
+        .catch(error => {
+            console.error('Load dashboard failed:', error);
+        });
+    
+    axios.get('/api/alerts?status=PENDING&per_page=5')
+        .then(response => {
+            const data = response.data;
+            document.getElementById('alertCount').textContent = data.total || 0;
+            
+            if (data.alerts && data.alerts.length > 0) {
+                let html = '';
+                data.alerts.forEach(alert => {
+                    const levelClass = alert.alert_level === 'CRITICAL' ? 'text-danger' : 'text-warning';
+                    html += `<tr>
+                        <td>${alert.server_hostname || '-'}</td>
+                        <td>${alert.alert_type}</td>
+                        <td class="${levelClass}">${alert.alert_content?.substring(0, 30) || '-'}</td>
+                        <td>${new Date(alert.created_at).toLocaleString()}</td>
+                    </tr>`;
+                });
+                document.getElementById('pendingAlerts').innerHTML = html;
+            } else {
+                document.getElementById('pendingAlerts').innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无告警</td></tr>';
+            }
+        });
+}
+
+function initCharts(data) {
+    const statusChart = echarts.init(document.getElementById('statusChart'));
+    statusChart.setOption({
+        tooltip: { trigger: 'item' },
+        legend: { bottom: '5%', left: 'center' },
+        series: [{
+            type: 'pie',
+            radius: ['40%', '70%'],
+            avoidLabelOverlap: false,
+            itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+            label: { show: false },
+            emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+            labelLine: { show: false },
+            data: [
+                { value: data.status_counts?.OK || 0, name: '正常', itemStyle: { color: '#28a745' } },
+                { value: data.status_counts?.WARNING || 0, name: '警告', itemStyle: { color: '#ffc107' } },
+                { value: data.status_counts?.CRITICAL || 0, name: '严重', itemStyle: { color: '#dc3545' } }
+            ]
+        }]
+    });
+    
+    const trendChart = echarts.init(document.getElementById('trendChart'));
+    trendChart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['巡检次数', '异常次数'] },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: { type: 'category', boundaryGap: false, data: [] },
+        yAxis: { type: 'value' },
+        series: [
+            { name: '巡检次数', type: 'line', smooth: true, data: [], itemStyle: { color: '#667eea' } },
+            { name: '异常次数', type: 'line', smooth: true, data: [], itemStyle: { color: '#dc3545' } }
+        ]
+    });
+}
+
+function runAllInspection() {
+    if (confirm('确定要执行一键巡检吗？')) {
+        axios.post('/api/servers/list')
+            .then(response => {
+                const servers = response.data.servers;
+                if (servers && servers.length > 0) {
+                    const serverIds = servers.map(s => s.id);
+                    return axios.post('/api/inspections/run', { server_ids: serverIds });
+                }
+            })
+            .then(response => {
+                alert('巡检任务已提交');
+                setTimeout(loadDashboard, 2000);
+            })
+            .catch(error => {
+                alert('巡检失败: ' + error.message);
+            });
+    }
+}
+
+loadDashboard();
+</script>
+{% endblock %}

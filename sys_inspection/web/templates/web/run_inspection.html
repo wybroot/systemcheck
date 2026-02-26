@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}执行巡检 - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">执行巡检</h4>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">选择服务器</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button class="btn btn-outline-primary btn-sm" onclick="selectAll()">全选</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="deselectAll()">取消全选</button>
+                    </div>
+                    <div class="list-group" id="serverList" style="max-height: 400px; overflow-y: auto;">
+                        <p class="text-muted p-3">加载中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">巡检选项</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">检查模块</label>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="modSys" checked disabled>
+                                    <label class="form-check-label" for="modSys">系统信息</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="modCpu" checked>
+                                    <label class="form-check-label" for="modCpu">CPU</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="modMem" checked>
+                                    <label class="form-check-label" for="modMem">内存</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="modDisk" checked>
+                                    <label class="form-check-label" for="modDisk">磁盘</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="modNet" checked>
+                                    <label class="form-check-label" for="modNet">网络</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="modProc" checked>
+                                    <label class="form-check-label" for="modProc">进程</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="modSec" checked>
+                                    <label class="form-check-label" for="modSec">安全</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary btn-lg" onclick="runInspection()">
+                            <i class="bi bi-play-fill"></i> 开始巡检
+                        </button>
+                    </div>
+                    
+                    <div id="progressArea" class="mt-3" style="display: none;">
+                        <div class="progress mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="progressBar" style="width: 0%"></div>
+                        </div>
+                        <p class="text-muted" id="progressText">准备中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function loadServers() {
+    axios.get('/api/servers?per_page=100')
+        .then(response => {
+            const data = response.data;
+            let html = '';
+            
+            if (data.servers && data.servers.length > 0) {
+                data.servers.forEach(server => {
+                    const serverIds = "{{ server_ids }}".split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
+                    const checked = serverIds.includes(server.id) ? 'checked' : '';
+                    
+                    html += `<label class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <input class="form-check-input me-2 server-checkbox" type="checkbox" 
+                                   value="${server.id}" ${checked}>
+                            <strong>${server.hostname}</strong>
+                            <small class="text-muted ms-2">${server.ip}</small>
+                        </div>
+                        <span class="badge bg-${server.env === '生产' ? 'danger' : server.env === '测试' ? 'warning' : 'info'}">
+                            ${server.env || '未知'}
+                        </span>
+                    </label>`;
+                });
+            } else {
+                html = '<p class="text-muted p-3">暂无服务器</p>';
+            }
+            
+            document.getElementById('serverList').innerHTML = html;
+        });
+}
+
+function selectAll() {
+    document.querySelectorAll('.server-checkbox').forEach(cb => cb.checked = true);
+}
+
+function deselectAll() {
+    document.querySelectorAll('.server-checkbox').forEach(cb => cb.checked = false);
+}
+
+function runInspection() {
+    const checkboxes = document.querySelectorAll('.server-checkbox:checked');
+    const serverIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    if (serverIds.length === 0) {
+        alert('请选择要巡检的服务器');
+        return;
+    }
+    
+    const modules = [];
+    if (document.getElementById('modCpu').checked) modules.push('cpu');
+    if (document.getElementById('modMem').checked) modules.push('mem');
+    if (document.getElementById('modDisk').checked) modules.push('disk');
+    if (document.getElementById('modNet').checked) modules.push('net');
+    if (document.getElementById('modProc').checked) modules.push('proc');
+    if (document.getElementById('modSec').checked) modules.push('sec');
+    
+    document.getElementById('progressArea').style.display = 'block';
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('progressText').textContent = `正在巡检 ${serverIds.length} 台服务器...`;
+    
+    const progressStep = 100 / serverIds.length;
+    let completed = 0;
+    
+    axios.post('/api/inspections/run', { server_ids: serverIds })
+        .then(response => {
+            document.getElementById('progressBar').style.width = '100%';
+            document.getElementById('progressText').textContent = '巡检完成！';
+            
+            setTimeout(() => {
+                window.location.href = '/inspections';
+            }, 1500);
+        })
+        .catch(error => {
+            document.getElementById('progressText').textContent = '巡检失败: ' + error.message;
+        });
+}
+
+loadServers();
+</script>
+{% endblock %}
