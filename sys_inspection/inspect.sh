@@ -29,9 +29,11 @@ LOCK_FILE="/tmp/inspect_$$.lock"
 
 cleanup() {
     rm -f "$LOCK_FILE" 2>/dev/null
-    for pid in "${PARALLEL_PIDS[@]}"; do
-        kill "$pid" 2>/dev/null
-    done
+    if [ ${#PARALLEL_PIDS[@]} -gt 0 ]; then
+        for pid in "${PARALLEL_PIDS[@]}"; do
+            kill "$pid" 2>/dev/null
+        done
+    fi
 }
 trap cleanup EXIT
 
@@ -187,7 +189,7 @@ list_servers() {
 
 safe_parse_output() {
     local output="$1"
-    local -n result_var=$2
+    local var_name=$2
     
     while IFS= read -r line; do
         if [[ "$line" =~ ^([A-Z_]+)=(.*)$ ]]; then
@@ -196,13 +198,13 @@ safe_parse_output() {
             
             case "$key" in
                 SYS_STATUS|SYS_RESULT|SYS_WARNINGS|SYS_CRITICALS|\
-                CPU_STATUS|CPU_CORES|CPU_USAGE|LOAD_1MIN|LOAD_5MIN|LOAD_15MIN|CPU_RESULT|CPU_WARNINGS|CPU_CRITICALS|\
-                MEM_STATUS|MEM_USAGE|MEM_USED|MEM_TOTAL|SWAP_USAGE|MEM_RESULT|MEM_WARNINGS|MEM_CRITICALS|\
-                DISK_STATUS|DISK_USAGE|DISK_RESULT|DISK_WARNINGS|DISK_CRITICALS|\
-                NET_STATUS|CONNECTION_COUNT|NET_RESULT|NET_WARNINGS|NET_CRITICALS|\
-                PROCESS_STATUS|ZOMBIE_COUNT|PROCESS_RESULT|PROCESS_WARNINGS|PROCESS_CRITICALS|\
-                SEC_STATUS|SEC_RESULT|SEC_WARNINGS|SEC_CRITICALS)
-                    result_var["$key"]="$value"
+                CPU_STATUS|CPU_CORES|CPU_USAGE|CPU_MODEL|LOAD_1MIN|LOAD_5MIN|LOAD_15MIN|CPU_RESULT|CPU_WARNINGS|CPU_CRITICALS|\
+                MEM_STATUS|MEM_USAGE|MEM_USED|MEM_TOTAL|SWAP_TOTAL|SWAP_USED|SWAP_USAGE|MEM_RESULT|MEM_WARNINGS|MEM_CRITICALS|\
+                DISK_STATUS|DISK_USAGE|DISK_COUNT|DISK_DETAILS|DISK_RESULT|DISK_WARNINGS|DISK_CRITICALS|\
+                NET_STATUS|CONNECTION_ESTABLISHED|CONNECTION_LISTEN|CONNECTION_TIME_WAIT|CONNECTION_COUNT|NET_RESULT|NET_WARNINGS|NET_CRITICALS|\
+                PROCESS_STATUS|PROCESS_RUNNING|PROCESS_SLEEPING|PROCESS_ZOMBIE|PROCESS_TOTAL|PROCESS_RESULT|PROCESS_WARNINGS|PROCESS_CRITICALS|\
+                SEC_STATUS|LOGIN_FAIL_COUNT|LOGIN_SUCCESS_COUNT|LOGIN_FAIL_USERS|FIREWALL_STATUS|SELINUX_STATUS|SEC_RESULT|SEC_WARNINGS|SEC_CRITICALS)
+                    eval "${var_name}[\"${key}\"]=\"${value}\""
                     ;;
             esac
         fi
@@ -210,44 +212,45 @@ safe_parse_output() {
 }
 
 get_overall_status() {
-    local -n status_arr=$1
+    local var_name=$1
     local status="OK"
     
-    for key in "${!status_arr[@]}"; do
-        if [[ "$key" == *_STATUS ]]; then
-            if [[ "${status_arr[$key]}" == "CRITICAL" ]]; then
-                status="CRITICAL"
-            elif [[ "${status_arr[$key]}" == "WARNING" && "$status" != "CRITICAL" ]]; then
-                status="WARNING"
+    eval "for key in \"\${!${var_name}[@]}\"; do
+        if [[ \"\$key\" == *_STATUS ]]; then
+            local val=\"\${${var_name}[\$key]}\"
+            if [[ \"\$val\" == \"CRITICAL\" ]]; then
+                status=\"CRITICAL\"
+            elif [[ \"\$val\" == \"WARNING\" && \"\$status\" != \"CRITICAL\" ]]; then
+                status=\"WARNING\"
             fi
         fi
-    done
+    done"
     
     echo "$status"
 }
 
 collect_warnings() {
-    local -n data_arr=$1
+    local var_name=$1
     local warnings=""
     
-    for key in "${!data_arr[@]}"; do
-        if [[ "$key" == *_WARNINGS && -n "${data_arr[$key]}" ]]; then
-            warnings="${warnings}${data_arr[$key]}; "
+    eval "for key in \"\${!${var_name}[@]}\"; do
+        if [[ \"\$key\" == *_WARNINGS && -n \"\${${var_name}[\$key]}\" ]]; then
+            warnings=\"\${warnings}\${${var_name}[\$key]}; \"
         fi
-    done
+    done"
     
     echo "$warnings"
 }
 
 collect_criticals() {
-    local -n data_arr=$1
+    local var_name=$1
     local criticals=""
     
-    for key in "${!data_arr[@]}"; do
-        if [[ "$key" == *_CRITICALS && -n "${data_arr[$key]}" ]]; then
-            criticals="${criticals}${data_arr[$criticals]}; "
+    eval "for key in \"\${!${var_name}[@]}\"; do
+        if [[ \"\$key\" == *_CRITICALS && -n \"\${${var_name}[\$key]}\" ]]; then
+            criticals=\"\${criticals}\${${var_name}[\$key]}; \"
         fi
-    done
+    done"
     
     echo "$criticals"
 }
@@ -257,117 +260,111 @@ inspect_local() {
     local services=$2
     local modules=$3
     
-    declare -A result_data
     local overall_status="OK"
     local all_warnings=""
     local all_criticals=""
     
     log_info "开始巡检本地服务器: $hostname"
     
+    echo "===INSPECT_START==="
+    
     if [[ "$modules" == *"sys"* ]] || [ -z "$modules" ]; then
-        echo -e "${CYAN}>>> 系统基础检查${NC}"
+        echo "===SYSTEM==="
         if source "${LIB_DIR}/system_check.sh" && check_system; then
-            result_data["SYS_STATUS"]="$SYS_STATUS"
-            result_data["SYS_RESULT"]="$SYS_RESULT"
+            if [[ "$SYS_STATUS" == "CRITICAL" ]]; then
+                overall_status="CRITICAL"
+            elif [[ "$SYS_STATUS" == "WARNING" && "$overall_status" != "CRITICAL" ]]; then
+                overall_status="WARNING"
+            fi
             [ -n "$SYS_WARNINGS" ] && all_warnings="${all_warnings}${SYS_WARNINGS}; "
             [ -n "$SYS_CRITICALS" ] && all_criticals="${all_criticals}${SYS_CRITICALS}; "
         fi
     fi
     
     if [[ "$modules" == *"cpu"* ]] || [ -z "$modules" ]; then
-        echo -e "${CYAN}>>> CPU检查${NC}"
+        echo "===CPU==="
         if source "${LIB_DIR}/cpu_check.sh" && check_cpu; then
-            result_data["CPU_STATUS"]="$CPU_STATUS"
-            result_data["CPU_CORES"]="$CPU_CORES"
-            result_data["CPU_USAGE"]="$CPU_USAGE"
-            result_data["LOAD_1MIN"]="$LOAD_1MIN"
-            result_data["LOAD_5MIN"]="$LOAD_5MIN"
-            result_data["LOAD_15MIN"]="$LOAD_15MIN"
-            result_data["CPU_RESULT"]="$CPU_RESULT"
+            if [[ "$CPU_STATUS" == "CRITICAL" ]]; then
+                overall_status="CRITICAL"
+            elif [[ "$CPU_STATUS" == "WARNING" && "$overall_status" != "CRITICAL" ]]; then
+                overall_status="WARNING"
+            fi
             [ -n "$CPU_WARNINGS" ] && all_warnings="${all_warnings}${CPU_WARNINGS}; "
             [ -n "$CPU_CRITICALS" ] && all_criticals="${all_criticals}${CPU_CRITICALS}; "
         fi
     fi
     
     if [[ "$modules" == *"mem"* ]] || [ -z "$modules" ]; then
-        echo -e "${CYAN}>>> 内存检查${NC}"
+        echo "===MEMORY==="
         if source "${LIB_DIR}/memory_check.sh" && check_memory; then
-            result_data["MEM_STATUS"]="$MEM_STATUS"
-            result_data["MEM_USAGE"]="$MEM_USAGE"
-            result_data["MEM_USED"]="$MEM_USED"
-            result_data["MEM_TOTAL"]="$MEM_TOTAL"
-            result_data["SWAP_USAGE"]="$SWAP_USAGE"
-            result_data["MEM_RESULT"]="$MEM_RESULT"
+            if [[ "$MEM_STATUS" == "CRITICAL" ]]; then
+                overall_status="CRITICAL"
+            elif [[ "$MEM_STATUS" == "WARNING" && "$overall_status" != "CRITICAL" ]]; then
+                overall_status="WARNING"
+            fi
             [ -n "$MEM_WARNINGS" ] && all_warnings="${all_warnings}${MEM_WARNINGS}; "
             [ -n "$MEM_CRITICALS" ] && all_criticals="${all_criticals}${MEM_CRITICALS}; "
         fi
     fi
     
     if [[ "$modules" == *"disk"* ]] || [ -z "$modules" ]; then
-        echo -e "${CYAN}>>> 磁盘检查${NC}"
+        echo "===DISK==="
         if source "${LIB_DIR}/disk_check.sh" && check_disk; then
-            result_data["DISK_STATUS"]="$DISK_STATUS"
-            result_data["DISK_USAGE"]="$DISK_USAGE"
-            result_data["DISK_RESULT"]="$DISK_RESULT"
+            if [[ "$DISK_STATUS" == "CRITICAL" ]]; then
+                overall_status="CRITICAL"
+            elif [[ "$DISK_STATUS" == "WARNING" && "$overall_status" != "CRITICAL" ]]; then
+                overall_status="WARNING"
+            fi
             [ -n "$DISK_WARNINGS" ] && all_warnings="${all_warnings}${DISK_WARNINGS}; "
             [ -n "$DISK_CRITICALS" ] && all_criticals="${all_criticals}${DISK_CRITICALS}; "
         fi
     fi
     
     if [[ "$modules" == *"net"* ]] || [ -z "$modules" ]; then
-        echo -e "${CYAN}>>> 网络检查${NC}"
+        echo "===NETWORK==="
         if source "${LIB_DIR}/network_check.sh" && check_network; then
-            result_data["NET_STATUS"]="$NET_STATUS"
-            result_data["CONNECTION_COUNT"]="$CONNECTION_COUNT"
-            result_data["NET_RESULT"]="$NET_RESULT"
+            if [[ "$NET_STATUS" == "CRITICAL" ]]; then
+                overall_status="CRITICAL"
+            elif [[ "$NET_STATUS" == "WARNING" && "$overall_status" != "CRITICAL" ]]; then
+                overall_status="WARNING"
+            fi
             [ -n "$NET_WARNINGS" ] && all_warnings="${all_warnings}${NET_WARNINGS}; "
             [ -n "$NET_CRITICALS" ] && all_criticals="${all_criticals}${NET_CRITICALS}; "
         fi
     fi
     
     if [[ "$modules" == *"proc"* ]] || [ -z "$modules" ]; then
-        echo -e "${CYAN}>>> 进程与服务检查${NC}"
+        echo "===PROCESS==="
         export SERVICES="$services"
         if source "${LIB_DIR}/process_check.sh" && check_process; then
-            result_data["PROCESS_STATUS"]="$PROCESS_STATUS"
-            result_data["ZOMBIE_COUNT"]="$ZOMBIE_COUNT"
-            result_data["PROCESS_RESULT"]="$PROCESS_RESULT"
+            if [[ "$PROCESS_STATUS" == "CRITICAL" ]]; then
+                overall_status="CRITICAL"
+            elif [[ "$PROCESS_STATUS" == "WARNING" && "$overall_status" != "CRITICAL" ]]; then
+                overall_status="WARNING"
+            fi
             [ -n "$PROCESS_WARNINGS" ] && all_warnings="${all_warnings}${PROCESS_WARNINGS}; "
             [ -n "$PROCESS_CRITICALS" ] && all_criticals="${all_criticals}${PROCESS_CRITICALS}; "
         fi
     fi
     
     if [[ "$modules" == *"sec"* ]] || [ -z "$modules" ]; then
-        echo -e "${CYAN}>>> 安全检查${NC}"
+        echo "===SECURITY==="
         if source "${LIB_DIR}/security_check.sh" && check_security; then
-            result_data["SEC_STATUS"]="$SEC_STATUS"
-            result_data["SEC_RESULT"]="$SEC_RESULT"
+            if [[ "$SEC_STATUS" == "CRITICAL" ]]; then
+                overall_status="CRITICAL"
+            elif [[ "$SEC_STATUS" == "WARNING" && "$overall_status" != "CRITICAL" ]]; then
+                overall_status="WARNING"
+            fi
             [ -n "$SEC_WARNINGS" ] && all_warnings="${all_warnings}${SEC_WARNINGS}; "
             [ -n "$SEC_CRITICALS" ] && all_criticals="${all_criticals}${SEC_CRITICALS}; "
         fi
     fi
     
-    overall_status=$(get_overall_status result_data)
-    
-    echo ""
-    if [ "$overall_status" == "OK" ]; then
-        echo -e "${GREEN}[OK] 巡检完成，状态正常${NC}"
-    elif [ "$overall_status" == "WARNING" ]; then
-        echo -e "${YELLOW}[WARNING] 巡检完成，存在警告项${NC}"
-        echo -e "${YELLOW}警告详情: ${all_warnings}${NC}"
-    else
-        echo -e "${RED}[CRITICAL] 巡检完成，存在严重问题${NC}"
-        echo -e "${RED}严重问题: ${all_criticals}${NC}"
-        [ -n "$all_warnings" ] && echo -e "${YELLOW}警告: ${all_warnings}${NC}"
-    fi
+    echo "===INSPECT_END==="
     
     INSPECT_RESULT_STATUS="$overall_status"
     INSPECT_RESULT_WARNINGS="$all_warnings"
     INSPECT_RESULT_CRITICALS="$all_criticals"
-    
-    for key in "${!result_data[@]}"; do
-        eval "INSPECT_RESULT_${key}=\"${result_data[$key]}\""
-    done
 }
 
 inspect_remote() {
@@ -385,20 +382,54 @@ inspect_remote() {
     local ssh_opts="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=${timeout} -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
     local ssh_cmd=""
     
+    local use_ip_as_hostname=false
+    
+    if [[ "$hostname" =~ ^[a-zA-Z0-9]$ ]] && [ ${#hostname} -le 15 ]; then
+        use_ip_as_hostname=true
+    fi
+    
     if [ -n "$password" ]; then
         if ! command -v sshpass &>/dev/null; then
             log_error "需要 sshpass 工具进行密码登录，请安装: yum install -y sshpass 或 apt install -y sshpass"
             return 1
         fi
-        ssh_cmd="sshpass -p '$password' ssh $ssh_opts -p $port $user@$ip"
-        log_info "使用密码登录: $user@$ip:$port"
+        
+        export SSHPASS="$password"
+        if [ "$use_ip_as_hostname" = true ]; then
+            ssh_cmd="sshpass -e ssh $ssh_opts -p $port $hostname"
+            log_info "使用密码登录: $hostname:$port (密码长度: ${#password})"
+        else
+            ssh_cmd="sshpass -e ssh $ssh_opts -p $port $user@$ip"
+            log_info "使用密码登录: $user@$ip:$port (密码长度: ${#password})"
+        fi
     else
         ssh_cmd="ssh $ssh_opts -o BatchMode=yes -p $port $user@$ip"
         log_info "使用免密登录: $user@$ip:$port"
     fi
     
-    if ! $ssh_cmd "echo 'SSH连接成功'" 2>/dev/null; then
+    local test_output
+    if ! test_output=$($ssh_cmd "echo 'SSH连接成功'" 2>&1); then
         log_error "SSH连接失败: ${ip}:${port}"
+        log_error "错误详情: $test_output"
+        
+        if [ -n "$password" ]; then
+            log_error "提示: 可能的原因包括:"
+            log_error "  1. 密码错误"
+            log_error "  2. SSH服务未启动或端口错误"
+            log_error "  3. 网络不通或防火墙阻止"
+            log_error "  4. sshpass工具未安装或版本不兼容"
+            log_error ""
+            log_error "建议手动测试: sshpass -p '***' ssh -o StrictHostKeyChecking=accept-new -p $port $user@$ip 'echo test'"
+        else
+            log_error "提示: 可能的原因包括:"
+            log_error "  1. 未配置SSH免密登录"
+            log_error "  2. SSH服务未启动或端口错误"
+            log_error "  3. 网络不通或防火墙阻止"
+            log_error "  4. 主机密钥未添加到known_hosts"
+            log_error ""
+            log_error "建议手动测试: ssh -o StrictHostKeyChecking=accept-new -p $port $user@$ip 'echo test'"
+        fi
+        
         return 1
     fi
     
@@ -478,21 +509,46 @@ if [[ "$INSPECT_MODULES" == *"cpu"* ]] || [ -z "$INSPECT_MODULES" ]; then
     CPU_CORES=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 1)
     CPU_MODEL=$(grep "model name" /proc/cpuinfo 2>/dev/null | head -1 | cut -d: -f2 | xargs)
     
+    CPU_USAGE="0.00"
     if [ -f /proc/stat ]; then
-        read cpu user nice system idle iowait irq softirq steal < <(head -1 /proc/stat)
+        CPU_LINE1=$(head -1 /proc/stat 2>/dev/null)
         sleep 1
-        read cpu2 user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 < <(head -1 /proc/stat)
-        total1=$((user + nice + system + idle + iowait + irq + softirq + steal))
-        total2=$((user2 + nice2 + system2 + idle2 + iowait2 + irq2 + softirq2 + steal2))
-        idle_diff=$((idle2 - idle))
-        total_diff=$((total2 - total1))
-        if [ $total_diff -gt 0 ]; then
-            CPU_USAGE=$(awk "BEGIN {printf \"%.2f\", 100 * ($total_diff - $idle_diff) / $total_diff}")
-        else
-            CPU_USAGE="0.00"
+        CPU_LINE2=$(head -1 /proc/stat 2>/dev/null)
+        
+        if [ -n "$CPU_LINE1" ] && [ -n "$CPU_LINE2" ]; then
+            CPU_USAGE=$(awk -v line1="$CPU_LINE1" -v line2="$CPU_LINE2" 'BEGIN {
+                split(line1, a1)
+                split(line2, a2)
+                user1 = a1[2] + 0
+                nice1 = a1[3] + 0
+                system1 = a1[4] + 0
+                idle1 = a1[5] + 0
+                iowait1 = a1[6] + 0
+                irq1 = a1[7] + 0
+                softirq1 = a1[8] + 0
+                steal1 = a1[9] + 0
+                
+                user2 = a2[2] + 0
+                nice2 = a2[3] + 0
+                system2 = a2[4] + 0
+                idle2 = a2[5] + 0
+                iowait2 = a2[6] + 0
+                irq2 = a2[7] + 0
+                softirq2 = a2[8] + 0
+                steal2 = a2[9] + 0
+                
+                total1 = user1 + nice1 + system1 + idle1 + iowait1 + irq1 + softirq1 + steal1
+                total2 = user2 + nice2 + system2 + idle2 + iowait2 + irq2 + softirq2 + steal2
+                total_diff = total2 - total1
+                idle_diff = idle2 - idle1
+                
+                if (total_diff > 0) {
+                    printf "%.2f", 100 * (total_diff - idle_diff) / total_diff
+                } else {
+                    printf "0.00"
+                }
+            }')
         fi
-    else
-        CPU_USAGE="0.00"
     fi
     
     LOAD_AVG=$(cat /proc/loadavg 2>/dev/null || echo "0 0 0")
@@ -571,6 +627,8 @@ if [[ "$INSPECT_MODULES" == *"mem"* ]] || [ -z "$INSPECT_MODULES" ]; then
     echo "MEM_TOTAL=$MEM_TOTAL"
     echo "MEM_USED=$MEM_USED"
     echo "MEM_USAGE=$MEM_USAGE"
+    echo "SWAP_TOTAL=$SWAP_TOTAL"
+    echo "SWAP_USED=$SWAP_USED"
     echo "SWAP_USAGE=$SWAP_USAGE"
     echo "MEM_STATUS=$MEM_STATUS"
     echo "MEM_WARNINGS=$MEM_WARNINGS"
@@ -583,11 +641,17 @@ if [[ "$INSPECT_MODULES" == *"disk"* ]] || [ -z "$INSPECT_MODULES" ]; then
     DISK_WARNINGS=""
     DISK_CRITICALS=""
     DISK_MAX_USAGE=0
+    DISK_DETAILS=""
     
-    DISK_INFO=$(df -hP 2>/dev/null | grep -v "Filesystem" | grep -v "tmpfs" | grep -v "devtmpfs" || echo "")
+    DISK_INFO=$(df -hP 2>/dev/null | tail -n +2 | grep -v "tmpfs" | grep -v "devtmpfs" || echo "")
     
+    local disk_count=0
     while IFS= read -r line; do
         [ -z "$line" ] && continue
+        filesystem=$(echo $line | awk '{print $1}')
+        size=$(echo $line | awk '{print $2}')
+        used=$(echo $line | awk '{print $3}')
+        avail=$(echo $line | awk '{print $4}')
         usage=$(echo $line | awk '{print $5}' | tr -d '%')
         mountpoint=$(echo $line | awk '{print $6}')
         
@@ -602,21 +666,36 @@ if [[ "$INSPECT_MODULES" == *"disk"* ]] || [ -z "$INSPECT_MODULES" ]; then
             [ "$DISK_STATUS" == "OK" ] && DISK_STATUS="WARNING"
             DISK_WARNINGS="${DISK_WARNINGS} ${mountpoint}(${usage}%)"
         fi
+        
+        DISK_DETAILS="${DISK_DETAILS}${filesystem}|${size}|${used}|${avail}|${usage}|${mountpoint}"$'\n'
+        ((disk_count++))
     done <<< "$DISK_INFO"
     
+    echo "DISK_COUNT=$disk_count"
     echo "DISK_USAGE=$DISK_MAX_USAGE"
     echo "DISK_STATUS=$DISK_STATUS"
     echo "DISK_WARNINGS=$DISK_WARNINGS"
     echo "DISK_CRITICALS=$DISK_CRITICALS"
+    echo "DISK_DETAILS=$DISK_DETAILS"
 fi
 
 if [[ "$INSPECT_MODULES" == *"net"* ]] || [ -z "$INSPECT_MODULES" ]; then
     echo "===NETWORK==="
+    
+    CONNECTION_ESTABLISHED=0
+    CONNECTION_LISTEN=0
+    CONNECTION_TIME_WAIT=0
     CONNECTION_COUNT=0
     
     if command -v ss &>/dev/null; then
+        CONNECTION_ESTABLISHED=$(ss -s 2>/dev/null | grep -oP "estab \K\d+" | head -1 || echo 0)
+        CONNECTION_LISTEN=$(ss -s 2>/dev/null | grep -oP "listen \K\d+" | head -1 || echo 0)
+        CONNECTION_TIME_WAIT=$(ss -s 2>/dev/null | grep -oP "time-wait \K\d+" | head -1 || echo 0)
         CONNECTION_COUNT=$(ss -s 2>/dev/null | grep -oP "estab \K\d+" | head -1 || echo 0)
     elif command -v netstat &>/dev/null; then
+        CONNECTION_ESTABLISHED=$(netstat -an 2>/dev/null | grep -c ESTABLISHED || echo 0)
+        CONNECTION_LISTEN=$(netstat -an 2>/dev/null | grep -c LISTEN || echo 0)
+        CONNECTION_TIME_WAIT=$(netstat -an 2>/dev/null | grep -c TIME_WAIT || echo 0)
         CONNECTION_COUNT=$(netstat -an 2>/dev/null | grep -c ESTABLISHED || echo 0)
     fi
     
@@ -626,12 +705,15 @@ if [[ "$INSPECT_MODULES" == *"net"* ]] || [ -z "$INSPECT_MODULES" ]; then
     
     if [ "$CONNECTION_COUNT" -gt "$CONNECTION_CRITICAL" ] 2>/dev/null; then
         NET_STATUS="CRITICAL"
-        NET_CRITICALS="网络连接数 ${CONNECTION_COUNT} 超过临界阈值 ${CONNECTION_CRITICAL}"
+        NET_CRITICALS="网络连接总数 ${CONNECTION_COUNT} 超过临界阈值 ${CONNECTION_CRITICAL}"
     elif [ "$CONNECTION_COUNT" -gt "$CONNECTION_WARNING" ] 2>/dev/null; then
         NET_STATUS="WARNING"
-        NET_WARNINGS="网络连接数 ${CONNECTION_COUNT} 超过警告阈值 ${CONNECTION_WARNING}"
+        NET_WARNINGS="网络连接总数 ${CONNECTION_COUNT} 超过警告阈值 ${CONNECTION_WARNING}"
     fi
     
+    echo "CONNECTION_ESTABLISHED=$CONNECTION_ESTABLISHED"
+    echo "CONNECTION_LISTEN=$CONNECTION_LISTEN"
+    echo "CONNECTION_TIME_WAIT=$CONNECTION_TIME_WAIT"
     echo "CONNECTION_COUNT=$CONNECTION_COUNT"
     echo "NET_STATUS=$NET_STATUS"
     echo "NET_WARNINGS=$NET_WARNINGS"
@@ -640,23 +722,36 @@ fi
 
 if [[ "$INSPECT_MODULES" == *"proc"* ]] || [ -z "$INSPECT_MODULES" ]; then
     echo "===PROCESS==="
-    PROCESS_TOTAL=$(ps aux 2>/dev/null | wc -l || echo 0)
-    ZOMBIE_COUNT=$(ps aux 2>/dev/null | grep -c "<defunct>" || echo 0)
+    
+    PROCESS_RUNNING=0
+    PROCESS_SLEEPING=0
+    PROCESS_STOPPED=0
+    PROCESS_ZOMBIE=0
+    PROCESS_TOTAL=0
+    
+    if command -v ps &>/dev/null; then
+        PROCESS_RUNNING=$(ps aux 2>/dev/null | grep -c "R\|Ss" || echo 0)
+        PROCESS_SLEEPING=$(ps aux 2>/dev/null | grep -c "S\|Sl" || echo 0)
+        PROCESS_ZOMBIE=$(ps aux 2>/dev/null | grep -c "<defunct>" || echo 0)
+        PROCESS_TOTAL=$(ps aux 2>/dev/null | wc -l || echo 0)
+    fi
     
     PROCESS_STATUS="OK"
     PROCESS_WARNINGS=""
     PROCESS_CRITICALS=""
     
-    if [ "$ZOMBIE_COUNT" -gt "$ZOMBIE_PROCESS_CRITICAL" ] 2>/dev/null; then
+    if [ "$PROCESS_ZOMBIE" -gt "$ZOMBIE_PROCESS_CRITICAL" ] 2>/dev/null; then
         PROCESS_STATUS="CRITICAL"
-        PROCESS_CRITICALS="僵尸进程数 ${ZOMBIE_COUNT} 超过临界阈值 ${ZOMBIE_PROCESS_CRITICAL}"
-    elif [ "$ZOMBIE_COUNT" -gt "$ZOMBIE_PROCESS_WARNING" ] 2>/dev/null; then
+        PROCESS_CRITICALS="僵尸进程数 ${PROCESS_ZOMBIE} 超过临界阈值 ${ZOMBIE_PROCESS_CRITICAL}"
+    elif [ "$PROCESS_ZOMBIE" -gt "$ZOMBIE_PROCESS_WARNING" ] 2>/dev/null; then
         PROCESS_STATUS="WARNING"
-        PROCESS_WARNINGS="僵尸进程数 ${ZOMBIE_COUNT} 超过警告阈值 ${ZOMBIE_PROCESS_WARNING}"
+        PROCESS_WARNINGS="僵尸进程数 ${PROCESS_ZOMBIE} 超过警告阈值 ${ZOMBIE_PROCESS_WARNING}"
     fi
     
+    echo "PROCESS_RUNNING=$PROCESS_RUNNING"
+    echo "PROCESS_SLEEPING=$PROCESS_SLEEPING"
+    echo "PROCESS_ZOMBIE=$PROCESS_ZOMBIE"
     echo "PROCESS_TOTAL=$PROCESS_TOTAL"
-    echo "ZOMBIE_COUNT=$ZOMBIE_COUNT"
     echo "PROCESS_STATUS=$PROCESS_STATUS"
     echo "PROCESS_WARNINGS=$PROCESS_WARNINGS"
     echo "PROCESS_CRITICALS=$PROCESS_CRITICALS"
@@ -664,12 +759,34 @@ fi
 
 if [[ "$INSPECT_MODULES" == *"sec"* ]] || [ -z "$INSPECT_MODULES" ]; then
     echo "===SECURITY==="
+    
     LOGIN_FAIL_COUNT=0
+    LOGIN_SUCCESS_COUNT=0
+    LOGIN_FAIL_USERS=0
+    LOGIN_FAIL_IPS=""
+    FIREWALL_STATUS="unknown"
+    SELINUX_STATUS="unknown"
     
     if [ -f /var/log/secure ]; then
         LOGIN_FAIL_COUNT=$(grep -c "Failed password" /var/log/secure 2>/dev/null || echo 0)
+        LOGIN_SUCCESS_COUNT=$(grep -c "Accepted password" /var/log/secure 2>/dev/null || echo 0)
+        LOGIN_FAIL_USERS=$(grep "Failed password" /var/log/secure 2>/dev/null | awk '{print $9}' | sort -u | wc -l || echo 0)
+        LOGIN_FAIL_IPS=$(grep "Failed password" /var/log/secure 2>/dev/null | awk '{print $11}' | sort | uniq -c | sort -rn | head -10 | awk '{print $1 " (" $2 ")"}' || echo "")
     elif [ -f /var/log/auth.log ]; then
         LOGIN_FAIL_COUNT=$(grep -c "Failed password" /var/log/auth.log 2>/dev/null || echo 0)
+        LOGIN_SUCCESS_COUNT=$(grep -c "Accepted password" /var/log/auth.log 2>/dev/null || echo 0)
+        LOGIN_FAIL_USERS=$(grep "Failed password" /var/log/auth.log 2>/dev/null | awk '{print $9}' | sort -u | wc -l || echo 0)
+        LOGIN_FAIL_IPS=$(grep "Failed password" /var/log/auth.log 2>/dev/null | awk '{print $11}' | sort | uniq -c | sort -rn | head -10 | awk '{print $1 " (" $2 ")"}' || echo "")
+    fi
+    
+    if command -v firewall-cmd &>/dev/null; then
+        FIREWALL_STATUS=$(systemctl is-active firewalld 2>/dev/null | grep -q "active" && echo "active" || echo "inactive")
+    elif command -v iptables &>/dev/null; then
+        FIREWALL_STATUS=$(iptables -L -n 2>/dev/null | grep -c "^[^Chain]" | wc -l | awk '{if($1>0) print "active"; else print "inactive"}')
+    fi
+    
+    if command -v getenforce &>/dev/null; then
+        SELINUX_STATUS=$(getenforce 2>/dev/null || echo "unknown")
     fi
     
     SEC_STATUS="OK"
@@ -685,6 +802,11 @@ if [[ "$INSPECT_MODULES" == *"sec"* ]] || [ -z "$INSPECT_MODULES" ]; then
     fi
     
     echo "LOGIN_FAIL_COUNT=$LOGIN_FAIL_COUNT"
+    echo "LOGIN_SUCCESS_COUNT=$LOGIN_SUCCESS_COUNT"
+    echo "LOGIN_FAIL_USERS=$LOGIN_FAIL_USERS"
+    echo "LOGIN_FAIL_IPS=$LOGIN_FAIL_IPS"
+    echo "FIREWALL_STATUS=$FIREWALL_STATUS"
+    echo "SELINUX_STATUS=$SELINUX_STATUS"
     echo "SEC_STATUS=$SEC_STATUS"
     echo "SEC_WARNINGS=$SEC_WARNINGS"
     echo "SEC_CRITICALS=$SEC_CRITICALS"
@@ -752,7 +874,7 @@ inspect_single_server() {
     local result_data=""
     
     if [[ "$ip" == "127.0.0.1" ]] || [[ "$ip" == "localhost" ]] || [[ "$ip" == "$(hostname -I 2>/dev/null | awk '{print $1}')" ]]; then
-        inspect_local "$hostname" "$services" "$modules"
+        result_data=$(inspect_local "$hostname" "$services" "$modules")
         status="$INSPECT_RESULT_STATUS"
         warnings="$INSPECT_RESULT_WARNINGS"
         criticals="$INSPECT_RESULT_CRITICALS"
@@ -786,7 +908,7 @@ inspect_single_server() {
         } > "$output_file"
     fi
     
-    echo "${ip}|${hostname}|${status}|${warnings}|${criticals}"
+    echo "${ip}|${hostname}|${status}|${warnings}|${criticals}|${result_data}"
 }
 
 generate_text_report() {
@@ -865,10 +987,40 @@ generate_html_report() {
         .status-badge.ok { background: #d4edda; color: #155724; }
         .status-badge.warning { background: #fff3cd; color: #856404; }
         .status-badge.critical { background: #f8d7da; color: #721c24; }
-        .server-body { padding: 20px; }
+        .fail-users-list { max-height: 150px; overflow-y: auto; font-size: 11px; }
+        .fail-user-item { padding: 4px 0; margin-bottom: 4px; border-bottom: 1px solid #eee; }
+        .fail-user-item:last-child { border-bottom: none; }
+        .fail-user-name { font-weight: 600; color: #495057; display: inline-block; min-width: 80px; }
+        .fail-user-ip { color: #dc3545; font-family: monospace; font-size: 11px; }
+        .inspection-details { margin-top: 20px; }
         .alert { padding: 10px 15px; border-radius: 5px; margin: 10px 0; }
         .alert.warning { background: #fff3cd; border-left: 4px solid #ffc107; }
         .alert.critical { background: #f8d7da; border-left: 4px solid #dc3545; }
+        .inspection-details { margin-top: 20px; }
+        .inspection-details h4 { margin-bottom: 15px; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        .inspection-details h5 { margin-top: 20px; margin-bottom: 10px; color: #555; font-size: 14px; font-weight: 600; }
+        .detail-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 13px; }
+        .detail-table tr:nth-child(even) { background: #f8f9fa; }
+        .detail-table td { padding: 8px 12px; border: 1px solid #dee2e6; }
+        .detail-table td:first-child { background: #e9ecef; font-weight: 500; width: 30%; color: #495057; }
+        .disk-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 12px; }
+        .disk-table thead { background: #667eea; color: white; }
+        .disk-table th { padding: 10px 8px; text-align: left; font-weight: 600; }
+        .disk-table tbody tr:nth-child(even) { background: #f8f9fa; }
+        .disk-table tbody tr:hover { background: #e9ecef; }
+        .disk-table td { padding: 8px; border: 1px solid #dee2e6; }
+        .disk-table tr.critical { background: #fff5f5 !important; }
+        .disk-table tr.warning { background: #fffbf0 !important; }
+        .usage-badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; display: inline-block; }
+        .usage-badge.ok { background: #d4edda; color: #155724; }
+        .usage-badge.warning { background: #fff3cd; color: #856404; }
+        .usage-badge.critical { background: #f8d7da; color: #721c24; }
+        .detail-table tr.warning-row { background: #fffbf0; }
+        .detail-table tr.critical-row { background: #fff5f5; }
+        .threshold-hint { font-size: 10px; color: #6c757d; margin-left: 8px; font-weight: normal; }
+        .threshold-hint .ok { color: #28a745; }
+        .threshold-hint .warning { color: #856404; }
+        .threshold-hint .critical { color: #dc3545; }
         pre { background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px; }
     </style>
 </head>
@@ -891,6 +1043,7 @@ generate_html_report() {
             local status="${SERVER_STATUSES[$i]}"
             local warnings="${SERVER_WARNINGS[$i]}"
             local criticals="${SERVER_CRITICALS[$i]}"
+            local raw_output="${SERVER_DETAILS[$i]}"
             
             local status_class="ok"
             [ "$status" == "WARNING" ] && status_class="warning"
@@ -901,13 +1054,257 @@ generate_html_report() {
             [ "$status" == "CRITICAL" ] && status_text="严重"
             
             echo '<div class="server-card">'
-            echo '<div class="server-header '"$status_class"'">'
+            echo "<div class=\"server-header $status_class\">"
             echo "<h3>${hostname} (${ip})</h3>"
-            echo '<span class="status-badge '"$status_class"'"'"'>'"$status_text"'</span>'
+            echo "<span class=\"status-badge $status_class\">$status_text</span>"
             echo '</div><div class="server-body">'
             
             [ -n "$criticals" ] && echo "<div class=\"alert critical\"><strong>严重问题:</strong> ${criticals}</div>"
             [ -n "$warnings" ] && echo "<div class=\"alert warning\"><strong>警告信息:</strong> ${warnings}</div>"
+            
+            if [ -n "$raw_output" ]; then
+                echo '<div class="inspection-details">'
+                echo '<h4>巡检详情</h4>'
+                
+                local cpu_usage_value=""
+                local mem_usage_value=""
+                local swap_usage_value=""
+                local conn_count_value=""
+                local zombie_count_value=""
+                local login_fail_value=""
+                
+                local current_section=""
+                while IFS= read -r line; do
+                    if [[ "$line" =~ ^===([A-Z]+)=== ]]; then
+                        local section="${BASH_REMATCH[1]}"
+                        case "$section" in
+                            SYSTEM)
+                                [ -n "$current_section" ] && echo '</table>'
+                                current_section="system"
+                                echo '<h5>系统信息</h5><table class="detail-table">'
+                                ;;
+                            CPU)
+                                [ -n "$current_section" ] && echo '</table>'
+                                current_section="cpu"
+                                echo '<h5>CPU信息</h5><table class="detail-table">'
+                                ;;
+                            MEMORY)
+                                [ -n "$current_section" ] && echo '</table>'
+                                current_section="memory"
+                                echo '<h5>内存信息</h5><table class="detail-table">'
+                                ;;
+                            DISK)
+                                [ -n "$current_section" ] && echo '</table>'
+                                current_section="disk"
+                                echo '<h5>磁盘信息</h5><table class="disk-table">'
+                                echo '<thead><tr><th>文件系统</th><th>总大小</th><th>已用</th><th>可用</th><th>使用率</th><th>挂载点</th></tr></thead>'
+                                echo '<tbody>'
+                                ;;
+                            NETWORK)
+                                [ -n "$current_section" ] && echo '</table>'
+                                current_section="network"
+                                echo '<h5>网络信息</h5><table class="detail-table">'
+                                ;;
+                            PROCESS)
+                                [ -n "$current_section" ] && echo '</table>'
+                                current_section="process"
+                                echo '<h5>进程信息</h5><table class="detail-table">'
+                                ;;
+                            SECURITY)
+                                [ -n "$current_section" ] && echo '</table>'
+                                current_section="security"
+                                echo '<h5>安全信息</h5><table class="detail-table">'
+                                ;;
+                        esac
+                    elif [[ "$line" =~ ^([A-Z_]+)=(.*)$ ]]; then
+                        local key="${BASH_REMATCH[1]}"
+                        local value="${BASH_REMATCH[2]}"
+                        
+                        case "$key" in
+                            HOSTNAME) echo "<tr><td>主机名</td><td>$value</td></tr>" ;;
+                            OS_TYPE) echo "<tr><td>操作系统</td><td>$value</td></tr>" ;;
+                            OS_VERSION) echo "<tr><td>系统版本</td><td>$value</td></tr>" ;;
+                            KERNEL_VERSION) echo "<tr><td>内核版本</td><td>$value</td></tr>" ;;
+                            ARCH) echo "<tr><td>架构</td><td>$value</td></tr>" ;;
+                            SYSTEM_TIME) echo "<tr><td>系统时间</td><td>$value</td></tr>" ;;
+                            UPTIME_DAYS) echo "<tr><td>运行天数</td><td>$value 天</td></tr>" ;;
+                            CPU_CORES) echo "<tr><td>CPU核心数</td><td>$value</td></tr>" ;;
+                            CPU_USAGE) 
+                                cpu_usage_value="$value"
+                                local cpu_usage_int=${value%.*}
+                                local cpu_class="ok"
+                                local cpu_row_class=""
+                                local cpu_threshold="正常 (≤80%)"
+                                if [ "$cpu_usage_int" -gt 95 ] 2>/dev/null; then
+                                    cpu_class="critical"
+                                    cpu_row_class="critical-row"
+                                    cpu_threshold="严重 (>95%)"
+                                elif [ "$cpu_usage_int" -gt 80 ] 2>/dev/null; then
+                                    cpu_class="warning"
+                                    cpu_row_class="warning-row"
+                                    cpu_threshold="警告 (80-95%)"
+                                fi
+                                echo "<tr class=\"$cpu_row_class\"><td>CPU使用率</td><td><span class=\"usage-badge $cpu_class\">${value}%</span> <span class=\"threshold-hint $cpu_class\">$cpu_threshold</span></td></tr>" ;;
+                            LOAD_1MIN) echo "<tr><td>1分钟负载</td><td>$value</td></tr>" ;;
+                            LOAD_5MIN) echo "<tr><td>5分钟负载</td><td>$value</td></tr>" ;;
+                            LOAD_15MIN) echo "<tr><td>15分钟负载</td><td>$value</td></tr>" ;;
+                            MEM_TOTAL) echo "<tr><td>总内存</td><td>$value MB</td></tr>" ;;
+                            MEM_USED) echo "<tr><td>已用内存</td><td>$value MB</td></tr>" ;;
+                            MEM_USAGE)
+                                mem_usage_value="$value"
+                                local mem_usage_int=${value%.*}
+                                local mem_class="ok"
+                                local mem_row_class=""
+                                local mem_threshold="正常 (≤85%)"
+                                if [ "$mem_usage_int" -gt 95 ] 2>/dev/null; then
+                                    mem_class="critical"
+                                    mem_row_class="critical-row"
+                                    mem_threshold="严重 (>95%)"
+                                elif [ "$mem_usage_int" -gt 85 ] 2>/dev/null; then
+                                    mem_class="warning"
+                                    mem_row_class="warning-row"
+                                    mem_threshold="警告 (85-95%)"
+                                fi
+                                echo "<tr class=\"$mem_row_class\"><td>内存使用率</td><td><span class=\"usage-badge $mem_class\">${value}%</span> <span class=\"threshold-hint $mem_class\">$mem_threshold</span></td></tr>" ;;
+                            SWAP_TOTAL) echo "<tr><td>Swap总大小</td><td>$value MB</td></tr>" ;;
+                            SWAP_USED) echo "<tr><td>Swap已用</td><td>$value MB</td></tr>" ;;
+                            SWAP_USAGE)
+                                swap_usage_value="$value"
+                                local swap_usage_int=${value%.*}
+                                local swap_class="ok"
+                                local swap_row_class=""
+                                local swap_threshold="正常 (≤50%)"
+                                if [ "$swap_usage_int" -gt 80 ] 2>/dev/null; then
+                                    swap_class="critical"
+                                    swap_row_class="critical-row"
+                                    swap_threshold="严重 (>80%)"
+                                elif [ "$swap_usage_int" -gt 50 ] 2>/dev/null; then
+                                    swap_class="warning"
+                                    swap_row_class="warning-row"
+                                    swap_threshold="警告 (50-80%)"
+                                fi
+                                echo "<tr class=\"$swap_row_class\"><td>Swap使用率</td><td><span class=\"usage-badge $swap_class\">${value}%</span> <span class=\"threshold-hint $swap_class\">$swap_threshold</span></td></tr>" ;;
+                            DISK_COUNT)
+                                ;;
+                            DISK_USAGE)
+                                ;;
+                            DISK_STATUS)
+                                ;;
+                            DISK_WARNINGS)
+                                ;;
+                            DISK_CRITICALS)
+                                ;;
+                            DISK_DETAILS)
+                                if [ -n "$value" ]; then
+                                    while IFS='|' read -r fs size used avail usage mount; do
+                                        [ -z "$fs" ] && continue
+                                        local usage_class="ok"
+                                        local usage_int=${usage%.*}
+                                        local disk_threshold="正常 (≤85%)"
+                                        if [ "$usage_int" -gt 95 ] 2>/dev/null; then
+                                            usage_class="critical"
+                                            disk_threshold="严重 (>95%)"
+                                        elif [ "$usage_int" -gt 85 ] 2>/dev/null; then
+                                            usage_class="warning"
+                                            disk_threshold="警告 (85-95%)"
+                                        fi
+                                        echo "<tr class=\"$usage_class\"><td>$fs</td><td>$size</td><td>$used</td><td>$avail</td><td><span class=\"usage-badge $usage_class\">${usage}%</span> <span class=\"threshold-hint $usage_class\">$disk_threshold</span></td><td>$mount</td></tr>"
+                                    done <<< "$value"
+                                fi
+                                ;;
+                            CONNECTION_COUNT)
+                                conn_count_value="$value"
+                                local conn_class="ok"
+                                local conn_row_class=""
+                                local conn_threshold="正常 (≤5000)"
+                                if [ "$value" -gt 10000 ] 2>/dev/null; then
+                                    conn_class="critical"
+                                    conn_row_class="critical-row"
+                                    conn_threshold="严重 (>10000)"
+                                elif [ "$value" -gt 5000 ] 2>/dev/null; then
+                                    conn_class="warning"
+                                    conn_row_class="warning-row"
+                                    conn_threshold="警告 (5000-10000)"
+                                fi
+                                echo "<tr class=\"$conn_row_class\"><td>网络连接总数</td><td><span class=\"usage-badge $conn_class\">$value</span> <span class=\"threshold-hint $conn_class\">$conn_threshold</span></td></tr>" ;;
+                            CONNECTION_ESTABLISHED) echo "<tr><td>已建立连接</td><td>$value</td></tr>" ;;
+                            CONNECTION_LISTEN) echo "<tr><td>监听端口</td><td>$value</td></tr>" ;;
+                            CONNECTION_TIME_WAIT) echo "<tr><td>TIME_WAIT连接</td><td>$value</td></tr>" ;;
+                            PROCESS_TOTAL) echo "<tr><td>总进程数</td><td>$value</td></tr>" ;;
+                            PROCESS_RUNNING) echo "<tr><td>运行中进程</td><td>$value</td></tr>" ;;
+                            PROCESS_SLEEPING) echo "<tr><td>睡眠进程</td><td>$value</td></tr>" ;;
+                            PROCESS_ZOMBIE)
+                                zombie_count_value="$value"
+                                local zombie_class="ok"
+                                local zombie_row_class=""
+                                local zombie_threshold="正常 (≤10)"
+                                if [ "$value" -gt 50 ] 2>/dev/null; then
+                                    zombie_class="critical"
+                                    zombie_row_class="critical-row"
+                                    zombie_threshold="严重 (>50)"
+                                elif [ "$value" -gt 10 ] 2>/dev/null; then
+                                    zombie_class="warning"
+                                    zombie_row_class="warning-row"
+                                    zombie_threshold="警告 (10-50)"
+                                fi
+                                echo "<tr class=\"$zombie_row_class\"><td>僵尸进程数</td><td><span class=\"usage-badge $zombie_class\">$value</span> <span class=\"threshold-hint $zombie_class\">$zombie_threshold</span></td></tr>" ;;
+                            LOGIN_FAIL_COUNT)
+                                login_fail_value="$value"
+                                local login_class="ok"
+                                local login_row_class=""
+                                local login_threshold="正常 (≤5)"
+                                if [ "$value" -gt 10 ] 2>/dev/null; then
+                                    login_class="critical"
+                                    login_row_class="critical-row"
+                                    login_threshold="严重 (>10)"
+                                elif [ "$value" -gt 5 ] 2>/dev/null; then
+                                    login_class="warning"
+                                    login_row_class="warning-row"
+                                    login_threshold="警告 (5-10)"
+                                fi
+                                echo "<tr class=\"$login_row_class\"><td>登录失败次数</td><td><span class=\"usage-badge $login_class\">$value</span> <span class=\"threshold-hint $login_class\">$login_threshold</span></td></tr>" ;;
+                            LOGIN_SUCCESS_COUNT) echo "<tr><td>登录成功次数</td><td>$value</td></tr>" ;;
+                            LOGIN_FAIL_USERS) echo "<tr><td>失败用户数</td><td>$value</td></tr>" ;;
+                            LOGIN_FAIL_IPS) 
+                                if [ -n "$value" ]; then
+                                    echo "<tr><td>失败用户列表</td><td><div class=\"fail-users-list\">"
+                                    echo "$value" | sed 's/| /g' | awk -F'(' '{print "<div class=\"fail-user-item\"><span class=\"fail-user-name\">" $1 "</span><span class=\"fail-user-ip\">" $2 "</span></div>"}'
+                                    echo "</div></td></tr>"
+                                else
+                                    echo "<tr><td>失败用户列表</td><td>无</td></tr>"
+                                fi
+                                ;;
+                            FIREWALL_STATUS)
+                                local fw_class="ok"
+                                if [ "$value" == "active" ]; then
+                                    fw_class="ok"
+                                elif [ "$value" == "inactive" ]; then
+                                    fw_class="warning"
+                                fi
+                                echo "<tr><td>防火墙状态</td><td><span class=\"usage-badge $fw_class\">$value</span></td></tr>" ;;
+                            SELINUX_STATUS)
+                                local selinux_class="ok"
+                                if [ "$value" == "enforcing" ]; then
+                                    selinux_class="warning"
+                                elif [ "$value" == "permissive" ]; then
+                                    selinux_class="ok"
+                                elif [ "$value" == "disabled" ]; then
+                                    selinux_class="ok"
+                                elif [ "$value" == "unknown" ]; then
+                                    selinux_class="warning"
+                                fi
+                                echo "<tr><td>SELinux状态</td><td><span class=\"usage-badge $selinux_class\">$value</span></td></tr>" ;;
+                        esac
+                    fi
+                done <<< "$raw_output"
+                
+                if [ "$current_section" == "disk" ]; then
+                    echo '</tbody></table>'
+                else
+                    [ -n "$current_section" ] && echo '</table>'
+                fi
+                echo '</div>'
+            fi
             
             echo '</div></div>'
         done
@@ -1128,6 +1525,7 @@ main() {
     SERVER_WARNINGS=()
     SERVER_CRITICALS=()
     SERVER_RAW_OUTPUTS=()
+    SERVER_DETAILS=()
     
     if [ ${#SERVER_IPS[@]} -eq 0 ]; then
         if [ "$inspect_all" = true ] || [ ${#target_ips[@]} -eq 0 ]; then
@@ -1230,22 +1628,36 @@ main() {
     for i in "${!pids[@]}"; do
         local result_file="${result_files[$i]}"
         local result_line
+        local raw_output=""
         
         if [ -f "$result_file" ]; then
             result_line=$(grep "^IP=" "$result_file" 2>/dev/null | head -1 || echo "")
             
-            while IFS='=' read -r key value; do
-                case "$key" in
-                    IP) SERVER_IPS[$i]="$value" ;;
-                    HOSTNAME) SERVER_HOSTNAMES[$i]="$value" ;;
-                    STATUS) SERVER_STATUSES[$i]="$value" ;;
-                    WARNINGS) SERVER_WARNINGS[$i]="$value" ;;
-                    CRITICALS) SERVER_CRITICALS[$i]="$value" ;;
-                esac
+            in_raw_output=false
+            while IFS= read -r line; do
+                if [[ "$line" == "---RAW_OUTPUT---" ]]; then
+                    in_raw_output=true
+                    continue
+                fi
+                if [ "$in_raw_output" = true ]; then
+                    raw_output="${raw_output}${line}"$'\n'
+                else
+                    IFS='=' read -r key value <<< "$line"
+                    case "$key" in
+                        IP) SERVER_IPS[$i]="$value" ;;
+                        HOSTNAME) SERVER_HOSTNAMES[$i]="$value" ;;
+                        STATUS) SERVER_STATUSES[$i]="$value" ;;
+                        WARNINGS) SERVER_WARNINGS[$i]="$value" ;;
+                        CRITICALS) SERVER_CRITICALS[$i]="$value" ;;
+                    esac
+                fi
             done < "$result_file"
+            
+            SERVER_DETAILS[$i]="$raw_output"
         else
             SERVER_STATUSES[$i]="CRITICAL"
             SERVER_CRITICALS[$i]="巡检执行失败"
+            SERVER_DETAILS[$i]=""
         fi
         
         case "${SERVER_STATUSES[$i]}" in

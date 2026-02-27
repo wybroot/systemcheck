@@ -1,0 +1,238 @@
+[root@docker sys_inspection]# ./inspect.sh -a
+2026-02-27 19:05:48 [INFO] 巡检开始
+2026-02-27 19:05:48 [INFO] 日志文件: /wyb/systemcheck/sys_inspection/logs/inspect_20260227_190548.log
+
+==================================================
+          服务器一键巡检系统 v2.0.0            
+==================================================
+
+========================================
+         依赖工具检查
+========================================
+
+[OK] 必需工具检查通过
+
+[OK] 所有可选工具都已安装
+
+
+2026-02-27 19:05:48 [INFO] 待巡检服务器数量: 2
+2026-02-27 19:05:48 [INFO] 并发数: 5
+2026-02-27 19:05:48 [INFO] 报告类型: html
+
+[1/2] 开始巡检: web-server-01 (192.168.200.110)
+2026-02-27 19:05:48 [INFO] [1/2] 开始巡检: web-server-01 (192.168.200.110)
+[2/2] 开始巡检: docker-env (192.168.200.51)
+2026-02-27 19:05:48 [INFO] [2/2] 开始巡检: docker-env (192.168.200.51)
+/wyb/systemcheck/sys_inspection/lib/system_check.sh: line 51: [: 0
+0: integer expression expected
+/wyb/systemcheck/sys_inspection/lib/memory_check.sh: line 73: [: 0
+0: integer expression expected
+192.168.200.110|web-server-01|OK|||2026-02-27 19:05:48 [INFO] 开始巡检远程服务器: 192.168.200.110 (web-server-01)
+2026-02-27 19:05:48 [INFO] 使用密码登录: root@192.168.200.110:22 (密码长度: 4)
+===INSPECT_START===
+===SYSTEM===
+HOSTNAME=example.com
+OS_TYPE=CentOS Linux
+OS_VERSION=7 (Core)
+KERNEL_VERSION=3.10.0-1160.95.1.el7.x86_64
+ARCH=x86_64
+SYSTEM_TIME=2026-02-27 19:06:57
+UPTIME_DAYS=309
+SYS_STATUS=OK
+===CPU===
+CPU_CORES=4
+CPU_USAGE=1.75
+LOAD_1MIN=0.11
+LOAD_5MIN=0.10
+LOAD_15MIN=0.09
+CPU_STATUS=OK
+CPU_WARNINGS=
+CPU_CRITICALS=
+===MEMORY===
+MEM_TOTAL=7821
+MEM_USED=1622
+MEM_USAGE=26.02
+SWAP_TOTAL=8063
+SWAP_USED=1
+SWAP_USAGE=0.01
+MEM_STATUS=OK
+MEM_WARNINGS=
+MEM_CRITICALS=
+===DISK===
+bash: 第 212 行:local: 只能在函数中使用
+DISK_COUNT=10
+DISK_USAGE=37
+DISK_STATUS=OK
+DISK_WARNINGS=
+DISK_CRITICALS=
+DISK_DETAILS=/dev/mapper/centos-root|50G|19G|32G|37|/
+/dev/sda1|1014M|190M|825M|19|/boot
+/dev/mapper/centos-home|241G|23G|219G|10|/home
+overlay|50G|19G|32G|37|/var/lib/docker/overlay2/9826835e80f77c879315205166714caf65e063b9c82129abfd4659620cb915bb/merged
+overlay|50G|19G|32G|37|/var/lib/docker/overlay2/198c0e042a02b3eb667cc208c6c9b2d39e41258bf54b4ddbade701d0b8b6f999/merged
+overlay|50G|19G|32G|37|/var/lib/docker/overlay2/19b25e28f19398f99045a4a47e55a5a0750fde78122fa03aeb34bc8d2b2876c1/merged
+overlay|50G|19G|32G|37|/var/lib/docker/overlay2/bdf51a6c4c0763d9c13eb0e95ce9c3c73fce36359b846c5aeb1fabdfa30f5c30/merged
+overlay|50G|19G|32G|37|/var/lib/docker/overlay2/87ed8d37ef0a8a8645b16995e209524e32f811e0e0fe828e38f3fb9fce309851/merged
+overlay|50G|19G|32G|37|/var/lib/docker/overlay2/a26e7976f524e50936ff40aa29eebeb8ee35823e934215517d6c2b44a4ee3582/merged
+overlay|50G|19G|32G|37|/var/lib/docker/overlay2/2de2e6b39d590b9509f08f17f55e145c2f02a1f10dbec771869f5a595129303a/merged
+
+===NETWORK===
+CONNECTION_ESTABLISHED=2
+CONNECTION_LISTEN=0
+CONNECTION_TIME_WAIT=0
+CONNECTION_COUNT=2
+NET_STATUS=OK
+NET_WARNINGS=
+NET_CRITICALS=
+===PROCESS===
+PROCESS_RUNNING=42
+PROCESS_SLEEPING=243
+PROCESS_ZOMBIE=1
+PROCESS_TOTAL=245
+PROCESS_STATUS=OK
+PROCESS_WARNINGS=
+PROCESS_CRITICALS=
+===SECURITY===
+LOGIN_FAIL_COUNT=3
+LOGIN_SUCCESS_COUNT=32
+LOGIN_FAIL_USERS=1
+LOGIN_FAIL_IPS=3 (192.168.200.51)
+FIREWALL_STATUS=active
+SELINUX_STATUS=Enforcing
+SEC_STATUS=OK
+SEC_WARNINGS=
+SEC_CRITICALS=
+===INSPECT_END===
+/wyb/systemcheck/sys_inspection/lib/network_check.sh: line 120: [: 0
+0: integer expression expected
+192.168.200.51|docker-env||||2026-02-27 19:05:48 [INFO] 开始巡检本地服务器: docker-env
+===INSPECT_START===
+===SYSTEM===
+SYS_STATUS=OK
+HOSTNAME=docker
+OS_TYPE=CentOS Linux
+OS_VERSION=7 (Core)
+KERNEL_VERSION=5.4.265-1.el7.elrepo.x86_64
+ARCH=x86_64
+SYSTEM_TIME=2026-02-27 19:05:48
+UPTIME_DAYS=290
+SYS_RESULT=系统基础信息:\n  主机名: docker\n  操作系统: CentOS Linux 7 (Core)\n  内核版本: 5.4.265-1.el7.elrepo.x86_64\n  系统架构: x86_64\n  系统时间: 2026-02-27 19:05:48\n  运行天数: 290天\n  NTP状态:\n      Local time: Fri 2026-02-27 19:05:48 CST
+     NTP enabled: n/a
+NTP synchronized: no\n  内核错误(最近):\n[    0.278372] pci 0000:00:15.5: BAR 13: failed to assign [io  size 0x1000]
+[    0.278374] pci 0000:00:15.4: BAR 13: failed to assign [io  size 0x1000]
+[    0.278377] pci 0000:00:15.3: BAR 13: failed to assign [io  size 0x1000]
+[    0.654519] dm_mod: module verification failed: signature and/or required key missing - tainting kernel
+[    3.536814] random: 76 urandom warning(s) missed due to ratelimiting
+SYS_WARNINGS=
+SYS_CRITICALS=
+===CPU===
+CPU_STATUS=OK
+CPU_CORES=8
+CPU_USAGE=3.88
+CPU_MODEL=Intel(R) Xeon(R) Gold 5222 CPU @ 3.80GHz
+LOAD_1MIN=0.15
+LOAD_5MIN=0.05
+LOAD_15MIN=0.01
+CPU_RESULT=CPU检查结果:\n  CPU型号: Intel(R) Xeon(R) Gold 5222 CPU @ 3.80GHz\n  CPU核心数: 8\n  CPU使用率: 3.88%\n  系统负载: 1分钟=0.15 5分钟=0.05 15分钟=0.01\n  负载阈值: 警告=8 临界=8\n  TOP5 CPU进程:\n12936 root      2.0 inspect.sh
+13298 root      2.0 inspect.sh
+13325 root      2.0 systemd-timedat
+13901 root      0.4 sshd-session
+  643 root      0.3 redis-server
+CPU_WARNINGS=
+CPU_CRITICALS=
+===MEMORY===
+MEM_STATUS=OK
+MEM_USAGE=25
+MEM_USED=4072
+MEM_TOTAL=16002
+SWAP_TOTAL=6143
+SWAP_USED=18
+SWAP_USAGE=0
+MEM_RESULT=内存检查结果:\n  内存总量: 16002MB\n  内存已用: 4072MB\n  内存使用率: 25%\n  Swap总量: 6143MB\n  Swap已用: 18MB\n  Swap使用率: 0%\n  TOP5 内存进程:\n30085 root      9.8 java
+28397 root      1.4 dockerd
+ 1338 root      0.9 filebeat
+28823 root      0.9 node
+ 8533 root      0.5 main
+MEM_WARNINGS=
+MEM_CRITICALS=
+===DISK===
+DISK_STATUS=OK
+DISK_RESULT=磁盘检查结果:\n  磁盘使用情况:\n  /: 总量=36G 已用=22G 可用=14G 使用率=62%\n  /home: 总量=18G 已用=7.9G 可用=9.6G 使用率=46%\n  /boot: 总量=1014M 已用=205M 可用=810M 使用率=21%\n  /var/lib/docker/overlay2/f3e995b85248c1a7693d239bcfd2a216d66eaa1c973444817c85ab907ca29496/merged: 总量=36G 已用=22G 可用=14G 使用率=62%\n  /var/lib/docker/overlay2/8b60749d34e6b0678b36edca8de199ad6bac49d548bb1dfabe7c1cf842f24442/merged: 总量=36G 已用=22G 可用=14G 使用率=62%\n  /var/lib/docker/overlay2/d38d1384a93a73fb84fbb731d34060f25ff013855124aba6c1c05fa399b2fa47/merged: 总量=36G 已用=22G 可用=14G 使用率=62%\n  Inode使用情况:\n  /: Inode使用率=2%\n  /home: Inode使用率=1%\n  /boot: Inode使用率=1%\n  /var/lib/docker/overlay2/f3e995b85248c1a7693d239bcfd2a216d66eaa1c973444817c85ab907ca29496/merged: Inode使用率=2%\n  /var/lib/docker/overlay2/8b60749d34e6b0678b36edca8de199ad6bac49d548bb1dfabe7c1cf842f24442/merged: Inode使用率=2%\n  /var/lib/docker/overlay2/d38d1384a93a73fb84fbb731d34060f25ff013855124aba6c1c05fa399b2fa47/merged: Inode使用率=2%\n  IO等待: 11.75%\n  大文件(>1G):\n/home/openim/open_im_EMFJL.tar.gz
+/home/openim/open_im/openim-server.tar
+DISK_WARNINGS=
+DISK_CRITICALS=
+DISK_IO_WAIT=11.75
+DISK_DETAILS=/dev/mapper/centos-root|36G|22G|14G|62|/
+/dev/mapper/centos-home|18G|7.9G|9.6G|46|/home
+/dev/sda1|1014M|205M|810M|21|/boot
+overlay|36G|22G|14G|62|/var/lib/docker/overlay2/f3e995b85248c1a7693d239bcfd2a216d66eaa1c973444817c85ab907ca29496/merged
+overlay|36G|22G|14G|62|/var/lib/docker/overlay2/8b60749d34e6b0678b36edca8de199ad6bac49d548bb1dfabe7c1cf842f24442/merged
+overlay|36G|22G|14G|62|/var/lib/docker/overlay2/d38d1384a93a73fb84fbb731d34060f25ff013855124aba6c1c05fa399b2fa47/merged
+
+===NETWORK===
+NET_STATUS=OK
+CONNECTION_ESTABLISHED=46
+CONNECTION_LISTEN=15
+CONNECTION_TIME_WAIT=2
+CONNECTION_COUNT=46
+TIME_WAIT_COUNT=2
+NET_RESULT=网络检查结果:\n  网络连接数: 46\n  TIME_WAIT连接: 2\n  TCP连接状态:\nLISTEN: 15
+ESTAB: 2
+TIME-WAIT: 2\n  网络连通性: 网关192.168.200.1丢包率: 0%\n  DNS状态:\nDNS 223.5.5.5: 异常\n
+NET_WARNINGS=
+NET_CRITICALS=
+===PROCESS===
+PROCESS_STATUS=OK
+PROCESS_RUNNING=52
+PROCESS_SLEEPING=181
+PROCESS_ZOMBIE=1
+PROCESS_TOTAL=301
+ZOMBIE_COUNT=1
+PROCESS_RESULT=进程与服务检查结果:\n  进程总数: 301\n  僵尸进程数: 1\n  服务状态:\n  docker: 运行中\n  定时任务:\nSHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=root\n  系统运行时间: up 41 weeks, 3 days, 10 hours, 19 minutes
+PROCESS_WARNINGS=
+PROCESS_CRITICALS=
+===SECURITY===
+SEC_STATUS=WARNING
+LOGIN_FAIL_COUNT=0
+0
+LOGIN_SUCCESS_COUNT=0
+0
+LOGIN_FAIL_USERS=0
+0
+LOGIN_FAIL_IPS=
+FIREWALL_STATUS=firewalld: running
+SELINUX_STATUS=Enforcing
+USER_COUNT=22
+SEC_RESULT=安全检查结果:\n  登录失败次数: 0
+0\n  用户总数: 22\n  在线用户:\n 19:05:53 up 290 days, 10:19,  2 users,  load average: 0.22, 0.06, 0.02
+root     pts/0    192.168.10.157   15:15    7.00s  0.12s  0.03s sshd-session: root [priv]           
+root     pts/2    192.168.10.157   15:15    3:50m 27.72s 27.72s top\n  最近登录:\nroot     pts/3        192.168.200.110  Fri Feb 27 16:17 - 16:17  (00:00)    
+root     pts/2        192.168.10.157   Fri Feb 27 15:15   still logged in   
+root     pts/0        192.168.10.157   Fri Feb 27 15:15   still logged in   
+root     pts/2        192.168.10.157   Fri Feb 27 14:42 - 15:11  (00:29)    
+root     pts/0        192.168.10.157   Fri Feb 27 14:42 - 15:11  (00:29)    \n  防火墙状态: firewalld: running\n  SSH配置:\nSSH端口: 22\nRoot登录: yes\n密码认证: yes
+SEC_WARNINGS=, SSH允许Root登录, SSH允许密码认证
+SEC_CRITICALS=
+===INSPECT_END===
+[OK] web-server-01 巡检完成，状态正常
+
+========================================
+           巡检摘要统计
+========================================
+总服务器数: 2
+正常: 1
+警告: 0
+严重: 0
+========================================
+
+2026-02-27 19:05:54 [INFO] 巡检摘要 - 总数:2 正常:1 警告:0 严重:0
+sed: -e expression #1, char 6: unterminated `s' command
+2026-02-27 19:05:54 [INFO] HTML报告已生成: /wyb/systemcheck/sys_inspection/reports/inspection_report_20260227_190548.html
+
+巡检完成！
+报告文件: /wyb/systemcheck/sys_inspection/reports/inspection_report_20260227_190548.html
+日志文件: /wyb/systemcheck/sys_inspection/logs/inspect_20260227_190548.log
+2026-02-27 19:05:54 [INFO] 巡检完成
+[root@docker sys_inspection]# 

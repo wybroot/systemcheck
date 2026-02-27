@@ -2,23 +2,38 @@
 
 check_security() {
     local result=""
-    local status="OK"
-    local warnings=""
-    local criticals=""
+    SEC_STATUS="OK"
+    SEC_WARNINGS=""
+    SEC_CRITICALS=""
     
     LOGIN_FAIL_COUNT=0
+    LOGIN_SUCCESS_COUNT=0
+    LOGIN_FAIL_USERS=0
+    LOGIN_FAIL_IPS=""
+    SELINUX_STATUS="unknown"
+    
     if [ -f /var/log/secure ]; then
         LOGIN_FAIL_COUNT=$(grep -c "Failed password" /var/log/secure 2>/dev/null || echo 0)
+        LOGIN_SUCCESS_COUNT=$(grep -c "Accepted password" /var/log/secure 2>/dev/null || echo 0)
+        LOGIN_FAIL_USERS=$(grep "Failed password" /var/log/secure 2>/dev/null | awk '{print $9}' | sort -u | wc -l || echo 0)
+        LOGIN_FAIL_IPS=$(grep "Failed password" /var/log/secure 2>/dev/null | awk '{print $11}' | sort | uniq -c | sort -rn | head -10 | awk '{print $1 " (" $2 ")"}' || echo "")
     elif [ -f /var/log/auth.log ]; then
         LOGIN_FAIL_COUNT=$(grep -c "Failed password" /var/log/auth.log 2>/dev/null || echo 0)
+        LOGIN_SUCCESS_COUNT=$(grep -c "Accepted password" /var/log/auth.log 2>/dev/null || echo 0)
+        LOGIN_FAIL_USERS=$(grep "Failed password" /var/log/auth.log 2>/dev/null | awk '{print $9}' | sort -u | wc -l || echo 0)
+        LOGIN_FAIL_IPS=$(grep "Failed password" /var/log/auth.log 2>/dev/null | awk '{print $11}' | sort | uniq -c | sort -rn | head -10 | awk '{print $1 " (" $2 ")"}' || echo "")
+    fi
+    
+    if command -v getenforce &>/dev/null; then
+        SELINUX_STATUS=$(getenforce 2>/dev/null || echo "unknown")
     fi
     
     if [ "$LOGIN_FAIL_COUNT" -gt "$LOGIN_FAIL_CRITICAL" ] 2>/dev/null; then
-        status="CRITICAL"
-        criticals="登录失败次数${LOGIN_FAIL_COUNT}超过临界阈值${LOGIN_FAIL_CRITICAL}"
+        SEC_STATUS="CRITICAL"
+        SEC_CRITICALS="登录失败次数${LOGIN_FAIL_COUNT}超过临界阈值${LOGIN_FAIL_CRITICAL}"
     elif [ "$LOGIN_FAIL_COUNT" -gt "$LOGIN_FAIL_WARNING" ] 2>/dev/null; then
-        status="WARNING"
-        warnings="登录失败次数${LOGIN_FAIL_COUNT}超过警告阈值${LOGIN_FAIL_WARNING}"
+        SEC_STATUS="WARNING"
+        SEC_WARNINGS="登录失败次数${LOGIN_FAIL_COUNT}超过警告阈值${LOGIN_FAIL_WARNING}"
     fi
     
     ONLINE_USERS=""
@@ -65,14 +80,14 @@ check_security() {
         SSH_CONFIG_CHECK="${SSH_CONFIG_CHECK}密码认证: ${SSH_PASSWORD_AUTH:-yes}"
         
         if [ "$SSH_ROOT_LOGIN" == "yes" ] || [ -z "$SSH_ROOT_LOGIN" ]; then
-            if [ "$status" == "OK" ]; then
-                status="WARNING"
+            if [ "$SEC_STATUS" == "OK" ]; then
+                SEC_STATUS="WARNING"
             fi
-            warnings="$warnings, SSH允许Root登录"
+            SEC_WARNINGS="$SEC_WARNINGS, SSH允许Root登录"
         fi
         
         if [ "$SSH_PASSWORD_AUTH" == "yes" ] || [ -z "$SSH_PASSWORD_AUTH" ]; then
-            warnings="$warnings, SSH允许密码认证"
+            SEC_WARNINGS="$SEC_WARNINGS, SSH允许密码认证"
         fi
     else
         SSH_CONFIG_CHECK="SSH配置文件不存在"
@@ -101,10 +116,15 @@ check_security() {
         result="${result}  SSH配置:\n${SSH_CONFIG_CHECK}"
     fi
     
-    echo "SEC_STATUS=$status"
+    echo "SEC_STATUS=$SEC_STATUS"
     echo "LOGIN_FAIL_COUNT=$LOGIN_FAIL_COUNT"
+    echo "LOGIN_SUCCESS_COUNT=$LOGIN_SUCCESS_COUNT"
+    echo "LOGIN_FAIL_USERS=$LOGIN_FAIL_USERS"
+    echo "LOGIN_FAIL_IPS=$LOGIN_FAIL_IPS"
+    echo "FIREWALL_STATUS=$FIREWALL_STATUS"
+    echo "SELINUX_STATUS=$SELINUX_STATUS"
     echo "USER_COUNT=$USER_COUNT"
     echo "SEC_RESULT=$result"
-    echo "SEC_WARNINGS=$warnings"
-    echo "SEC_CRITICALS=$criticals"
+    echo "SEC_WARNINGS=$SEC_WARNINGS"
+    echo "SEC_CRITICALS=$SEC_CRITICALS"
 }

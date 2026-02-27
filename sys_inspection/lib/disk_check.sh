@@ -2,13 +2,15 @@
 
 check_disk() {
     local result=""
-    local status="OK"
-    local warnings=""
-    local criticals=""
+    DISK_STATUS="OK"
+    DISK_WARNINGS=""
+    DISK_CRITICALS=""
     
     DISK_RESULT=""
+    DISK_DETAILS=""
+    
     if has_dep "df" && ! use_alt "df"; then
-        DISK_INFO=$(df -hP 2>/dev/null | grep -v "Filesystem" | grep -v "tmpfs" | grep -v "devtmpfs")
+        DISK_INFO=$(df -hP 2>/dev/null | tail -n +2 | grep -v "tmpfs" | grep -v "devtmpfs")
         
         while IFS= read -r line; do
             local filesystem=$(echo $line | awk '{print $1}')
@@ -19,13 +21,14 @@ check_disk() {
             local mountpoint=$(echo $line | awk '{print $6}')
             
             DISK_RESULT="${DISK_RESULT}  ${mountpoint}: 总量=${size} 已用=${used} 可用=${avail} 使用率=${usage}%\n"
+            DISK_DETAILS="${DISK_DETAILS}${filesystem}|${size}|${used}|${avail}|${usage}|${mountpoint}"$'\n'
             
             if [ "$usage" -gt "$DISK_USAGE_CRITICAL" ] 2>/dev/null; then
-                status="CRITICAL"
-                criticals="$criticals, 挂载点${mountpoint}使用率${usage}%超过临界阈值${DISK_USAGE_CRITICAL}%"
+                DISK_STATUS="CRITICAL"
+                DISK_CRITICALS="$DISK_CRITICALS, 挂载点${mountpoint}使用率${usage}%超过临界阈值${DISK_USAGE_CRITICAL}%"
             elif [ "$usage" -gt "$DISK_USAGE_WARNING" ] 2>/dev/null; then
-                [ "$status" == "OK" ] && status="WARNING"
-                warnings="$warnings, 挂载点${mountpoint}使用率${usage}%超过警告阈值${DISK_USAGE_WARNING}%"
+                [ "$DISK_STATUS" == "OK" ] && DISK_STATUS="WARNING"
+                DISK_WARNINGS="$DISK_WARNINGS, 挂载点${mountpoint}使用率${usage}%超过警告阈值${DISK_USAGE_WARNING}%"
             fi
         done <<< "$DISK_INFO"
         
@@ -40,11 +43,11 @@ check_disk() {
                 INODE_RESULT="${INODE_RESULT}  ${mountpoint}: Inode使用率=${iusage}%\n"
                 
                 if [ "$iusage" -gt "$INODE_USAGE_CRITICAL" ] 2>/dev/null; then
-                    [ "$status" != "CRITICAL" ] && status="CRITICAL"
-                    criticals="$criticals, 挂载点${mountpoint} Inode使用率${iusage}%超过临界阈值"
+                    [ "$DISK_STATUS" != "CRITICAL" ] && DISK_STATUS="CRITICAL"
+                    DISK_CRITICALS="$DISK_CRITICALS, 挂载点${mountpoint} Inode使用率${iusage}%超过临界阈值"
                 elif [ "$iusage" -gt "$INODE_USAGE_WARNING" ] 2>/dev/null; then
-                    [ "$status" == "OK" ] && status="WARNING"
-                    warnings="$warnings, 挂载点${mountpoint} Inode使用率${iusage}%超过警告阈值"
+                    [ "$DISK_STATUS" == "OK" ] && DISK_STATUS="WARNING"
+                    DISK_WARNINGS="$DISK_WARNINGS, 挂载点${mountpoint} Inode使用率${iusage}%超过警告阈值"
                 fi
             fi
         done <<< "$INODE_INFO"
@@ -64,15 +67,17 @@ check_disk() {
                             local usage=$((used_kb * 100 / size_kb))
                             local size_gb=$((size_kb / 1024 / 1024))
                             local used_gb=$((used_kb / 1024 / 1024))
+                            local avail_gb=$((avail_kb / 1024 / 1024))
                             
                             DISK_RESULT="${DISK_RESULT}  ${mountpoint}: 总量=${size_gb}G 已用=${used_gb}G 使用率=${usage}%\n"
+                            DISK_DETAILS="${DISK_DETAILS}${device}|${size_gb}G|${used_gb}G|${avail_gb}G|${usage}|${mountpoint}"$'\n'
                             
                             if [ "$usage" -gt "$DISK_USAGE_CRITICAL" ]; then
-                                status="CRITICAL"
-                                criticals="$criticals, 挂载点${mountpoint}使用率${usage}%超过临界阈值"
+                                DISK_STATUS="CRITICAL"
+                                DISK_CRITICALS="$DISK_CRITICALS, 挂载点${mountpoint}使用率${usage}%超过临界阈值"
                             elif [ "$usage" -gt "$DISK_USAGE_WARNING" ]; then
-                                [ "$status" == "OK" ] && status="WARNING"
-                                warnings="$warnings, 挂载点${mountpoint}使用率${usage}%超过警告阈值"
+                                [ "$DISK_STATUS" == "OK" ] && DISK_STATUS="WARNING"
+                                DISK_WARNINGS="$DISK_WARNINGS, 挂载点${mountpoint}使用率${usage}%超过警告阈值"
                             fi
                         fi
                     fi
@@ -88,20 +93,20 @@ check_disk() {
         if [ -n "$IO_WAIT" ]; then
             if has_dep "bc" && ! use_alt "bc"; then
                 if (( $(echo "$IO_WAIT > $IO_WAIT_CRITICAL" | bc -l 2>/dev/null) )); then
-                    [ "$status" != "CRITICAL" ] && status="CRITICAL"
-                    criticals="$criticals, IO等待时间${IO_WAIT}%超过临界阈值${IO_WAIT_CRITICAL}%"
+                    [ "$DISK_STATUS" != "CRITICAL" ] && DISK_STATUS="CRITICAL"
+                    DISK_CRITICALS="$DISK_CRITICALS, IO等待时间${IO_WAIT}%超过临界阈值${IO_WAIT_CRITICAL}%"
                 elif (( $(echo "$IO_WAIT > $IO_WAIT_WARNING" | bc -l 2>/dev/null) )); then
-                    [ "$status" == "OK" ] && status="WARNING"
-                    warnings="$warnings, IO等待时间${IO_WAIT}%超过警告阈值${IO_WAIT_WARNING}%"
+                    [ "$DISK_STATUS" == "OK" ] && DISK_STATUS="WARNING"
+                    DISK_WARNINGS="$DISK_WARNINGS, IO等待时间${IO_WAIT}%超过警告阈值${IO_WAIT_WARNING}%"
                 fi
             else
                 local io_wait_int=${IO_WAIT%.*}
                 if [ "$io_wait_int" -gt "$IO_WAIT_CRITICAL" ]; then
-                    [ "$status" != "CRITICAL" ] && status="CRITICAL"
-                    criticals="$criticals, IO等待时间${IO_WAIT}%超过临界阈值"
+                    [ "$DISK_STATUS" != "CRITICAL" ] && DISK_STATUS="CRITICAL"
+                    DISK_CRITICALS="$DISK_CRITICALS, IO等待时间${IO_WAIT}%超过临界阈值"
                 elif [ "$io_wait_int" -gt "$IO_WAIT_WARNING" ]; then
-                    [ "$status" == "OK" ] && status="WARNING"
-                    warnings="$warnings, IO等待时间${IO_WAIT}%超过警告阈值"
+                    [ "$DISK_STATUS" == "OK" ] && DISK_STATUS="WARNING"
+                    DISK_WARNINGS="$DISK_WARNINGS, IO等待时间${IO_WAIT}%超过警告阈值"
                 fi
             fi
         fi
@@ -130,9 +135,10 @@ check_disk() {
         result="${result}  大文件(>1G):\n${LARGE_FILES}"
     fi
     
-    echo "DISK_STATUS=$status"
+    echo "DISK_STATUS=$DISK_STATUS"
     echo "DISK_RESULT=$result"
-    echo "DISK_WARNINGS=$warnings"
-    echo "DISK_CRITICALS=$criticals"
+    echo "DISK_WARNINGS=$DISK_WARNINGS"
+    echo "DISK_CRITICALS=$DISK_CRITICALS"
     echo "DISK_IO_WAIT=$IO_WAIT"
+    echo "DISK_DETAILS=$DISK_DETAILS"
 }

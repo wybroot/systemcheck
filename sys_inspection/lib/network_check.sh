@@ -2,22 +2,33 @@
 
 check_network() {
     local result=""
-    local status="OK"
-    local warnings=""
-    local criticals=""
+    NET_STATUS="OK"
+    NET_WARNINGS=""
+    NET_CRITICALS=""
     
     CONNECTION_COUNT=0
+    CONNECTION_ESTABLISHED=0
+    CONNECTION_LISTEN=0
+    CONNECTION_TIME_WAIT=0
     TIME_WAIT_COUNT=0
+    LISTEN_COUNT=0
     
     if has_dep "ss" && ! use_alt "ss"; then
-        CONNECTION_COUNT=$(ss -s 2>/dev/null | grep "estab" | awk '{print $2}' | head -1)
-        CONNECTION_COUNT=${CONNECTION_COUNT:-0}
+        CONNECTION_ESTABLISHED=$(ss -s 2>/dev/null | grep "estab" | awk '{print $2}' | head -1 || echo 0)
+        CONNECTION_LISTEN=$(ss -s 2>/dev/null | grep "listen" | awk '{print $2}' | head -1 || echo 0)
+        CONNECTION_TIME_WAIT=$(ss -s 2>/dev/null | grep "time-wait" | awk '{print $2}' | head -1 || echo 0)
+        CONNECTION_COUNT=${CONNECTION_ESTABLISHED:-0}
         TCP_STATES=$(ss -tan 2>/dev/null | awk 'NR>1 {count[$1]++} END {for(state in count) print state": "count[state]}')
         TIME_WAIT_COUNT=$(ss -tan 2>/dev/null | grep -c "TIME-WAIT" || echo 0)
+        LISTEN_COUNT=$(ss -tan 2>/dev/null | grep -c "LISTEN" || echo 0)
     elif has_dep "netstat" && ! use_alt "netstat"; then
-        CONNECTION_COUNT=$(netstat -an 2>/dev/null | grep -c ESTABLISHED || echo 0)
+        CONNECTION_ESTABLISHED=$(netstat -an 2>/dev/null | grep -c ESTABLISHED || echo 0)
+        CONNECTION_LISTEN=$(netstat -an 2>/dev/null | grep -c LISTEN || echo 0)
+        CONNECTION_TIME_WAIT=$(netstat -an 2>/dev/null | grep -c TIME_WAIT || echo 0)
+        CONNECTION_COUNT=${CONNECTION_ESTABLISHED:-0}
         TCP_STATES=$(netstat -tan 2>/dev/null | awk 'NR>2 {count[$6]++} END {for(state in count) print state": "count[state]}')
         TIME_WAIT_COUNT=$(netstat -tan 2>/dev/null | grep -c TIME_WAIT || echo 0)
+        LISTEN_COUNT=$(netstat -tan 2>/dev/null | grep -c LISTEN || echo 0)
     else
         if [ -f /proc/net/tcp ]; then
             CONNECTION_COUNT=$(grep -c "01" /proc/net/tcp 2>/dev/null || echo 0)
@@ -29,18 +40,22 @@ check_network() {
     
     CONNECTION_COUNT=${CONNECTION_COUNT:-0}
     TIME_WAIT_COUNT=${TIME_WAIT_COUNT:-0}
+    LISTEN_COUNT=${LISTEN_COUNT:-0}
+    CONNECTION_ESTABLISHED=${CONNECTION_ESTABLISHED:-0}
+    CONNECTION_LISTEN=${CONNECTION_LISTEN:-0}
+    CONNECTION_TIME_WAIT=${CONNECTION_TIME_WAIT:-0}
     
     if [ "$CONNECTION_COUNT" -gt "$CONNECTION_CRITICAL" ] 2>/dev/null; then
-        status="CRITICAL"
-        criticals="网络连接数${CONNECTION_COUNT}超过临界阈值${CONNECTION_CRITICAL}"
+        NET_STATUS="CRITICAL"
+        NET_CRITICALS="网络连接数${CONNECTION_COUNT}超过临界阈值${CONNECTION_CRITICAL}"
     elif [ "$CONNECTION_COUNT" -gt "$CONNECTION_WARNING" ] 2>/dev/null; then
-        status="WARNING"
-        warnings="网络连接数${CONNECTION_COUNT}超过警告阈值${CONNECTION_WARNING}"
+        NET_STATUS="WARNING"
+        NET_WARNINGS="网络连接数${CONNECTION_COUNT}超过警告阈值${CONNECTION_WARNING}"
     fi
     
     if [ "$TIME_WAIT_COUNT" -gt "$TIME_WAIT_WARNING" ] 2>/dev/null; then
-        [ "$status" == "OK" ] && status="WARNING"
-        warnings="$warnings, TIME_WAIT连接数${TIME_WAIT_COUNT}过多"
+        [ "$NET_STATUS" == "OK" ] && NET_STATUS="WARNING"
+        NET_WARNINGS="$NET_WARNINGS, TIME_WAIT连接数${TIME_WAIT_COUNT}过多"
     fi
     
     LISTEN_PORTS=""
@@ -82,11 +97,11 @@ check_network() {
                 GATEWAY_PING="网关${DEFAULT_GW}丢包率: ${PACKET_LOSS}%"
                 
                 if [ "$PACKET_LOSS" -gt "$PACKET_LOSS_CRITICAL" ] 2>/dev/null; then
-                    [ "$status" != "CRITICAL" ] && status="CRITICAL"
-                    criticals="$criticals, 网关丢包率${PACKET_LOSS}%过高"
+                    [ "$NET_STATUS" != "CRITICAL" ] && NET_STATUS="CRITICAL"
+                    NET_CRITICALS="$NET_CRITICALS, 网关丢包率${PACKET_LOSS}%过高"
                 elif [ "$PACKET_LOSS" -gt "$PACKET_LOSS_WARNING" ] 2>/dev/null; then
-                    [ "$status" == "OK" ] && status="WARNING"
-                    warnings="$warnings, 网关丢包率${PACKET_LOSS}%偏高"
+                    [ "$NET_STATUS" == "OK" ] && NET_STATUS="WARNING"
+                    NET_WARNINGS="$NET_WARNINGS, 网关丢包率${PACKET_LOSS}%偏高"
                 fi
             fi
         else
@@ -127,10 +142,13 @@ check_network() {
         result="${result}  DNS状态:\n${DNS_CHECK}"
     fi
     
-    echo "NET_STATUS=$status"
+    echo "NET_STATUS=$NET_STATUS"
+    echo "CONNECTION_ESTABLISHED=$CONNECTION_COUNT"
+    echo "CONNECTION_LISTEN=$LISTEN_COUNT"
+    echo "CONNECTION_TIME_WAIT=$TIME_WAIT_COUNT"
     echo "CONNECTION_COUNT=$CONNECTION_COUNT"
     echo "TIME_WAIT_COUNT=$TIME_WAIT_COUNT"
     echo "NET_RESULT=$result"
-    echo "NET_WARNINGS=$warnings"
-    echo "NET_CRITICALS=$criticals"
+    echo "NET_WARNINGS=$NET_WARNINGS"
+    echo "NET_CRITICALS=$NET_CRITICALS"
 }

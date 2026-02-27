@@ -2,15 +2,19 @@
 
 check_process() {
     local result=""
-    local status="OK"
-    local warnings=""
-    local criticals=""
+    PROCESS_STATUS="OK"
+    PROCESS_WARNINGS=""
+    PROCESS_CRITICALS=""
     
     PROCESS_TOTAL=0
+    PROCESS_RUNNING=0
+    PROCESS_SLEEPING=0
     ZOMBIE_COUNT=0
     
     if has_dep "ps" && ! use_alt "ps"; then
         PROCESS_TOTAL=$(ps aux 2>/dev/null | wc -l)
+        PROCESS_RUNNING=$(ps aux 2>/dev/null | grep -c "R\|Ss" || echo 0)
+        PROCESS_SLEEPING=$(ps aux 2>/dev/null | grep -c "S\|Sl" || echo 0)
         ZOMBIE_COUNT=$(ps aux 2>/dev/null | grep -c "<defunct>" || echo 0)
     else
         if [ -f /proc/stat ]; then
@@ -20,14 +24,16 @@ check_process() {
     fi
     
     PROCESS_TOTAL=${PROCESS_TOTAL:-0}
+    PROCESS_RUNNING=${PROCESS_RUNNING:-0}
+    PROCESS_SLEEPING=${PROCESS_SLEEPING:-0}
     ZOMBIE_COUNT=${ZOMBIE_COUNT:-0}
     
     if [ "$ZOMBIE_COUNT" -gt "$ZOMBIE_PROCESS_CRITICAL" ] 2>/dev/null; then
-        status="CRITICAL"
-        criticals="僵尸进程数${ZOMBIE_COUNT}超过临界阈值${ZOMBIE_PROCESS_CRITICAL}"
+        PROCESS_STATUS="CRITICAL"
+        PROCESS_CRITICALS="僵尸进程数${ZOMBIE_COUNT}超过临界阈值${ZOMBIE_PROCESS_CRITICAL}"
     elif [ "$ZOMBIE_COUNT" -gt "$ZOMBIE_PROCESS_WARNING" ] 2>/dev/null; then
-        status="WARNING"
-        warnings="僵尸进程数${ZOMBIE_COUNT}超过警告阈值${ZOMBIE_PROCESS_WARNING}"
+        PROCESS_STATUS="WARNING"
+        PROCESS_WARNINGS="僵尸进程数${ZOMBIE_COUNT}超过警告阈值${ZOMBIE_PROCESS_WARNING}"
     fi
     
     ZOMBIE_LIST=""
@@ -49,10 +55,10 @@ check_process() {
                         SERVICE_STATUS="${SERVICE_STATUS}  ${svc}: 运行中\n"
                     else
                         SERVICE_STATUS="${SERVICE_STATUS}  ${svc}: 未运行(${SVC_STATUS})\n"
-                        if [ "$status" == "OK" ]; then
-                            status="WARNING"
+                        if [ "$PROCESS_STATUS" == "OK" ]; then
+                            PROCESS_STATUS="WARNING"
                         fi
-                        warnings="$warnings, 服务${svc}未运行"
+                        PROCESS_WARNINGS="$PROCESS_WARNINGS, 服务${svc}未运行"
                     fi
                 elif command -v service &>/dev/null; then
                     SVC_STATUS=$(service $svc status 2>/dev/null | head -1)
@@ -99,10 +105,13 @@ check_process() {
         result="${result}  系统运行时间: ${UPTIME_CHECK}"
     fi
     
-    echo "PROCESS_STATUS=$status"
+    echo "PROCESS_STATUS=$PROCESS_STATUS"
+    echo "PROCESS_RUNNING=$PROCESS_RUNNING"
+    echo "PROCESS_SLEEPING=$PROCESS_SLEEPING"
+    echo "PROCESS_ZOMBIE=$ZOMBIE_COUNT"
     echo "PROCESS_TOTAL=$PROCESS_TOTAL"
     echo "ZOMBIE_COUNT=$ZOMBIE_COUNT"
     echo "PROCESS_RESULT=$result"
-    echo "PROCESS_WARNINGS=$warnings"
-    echo "PROCESS_CRITICALS=$criticals"
+    echo "PROCESS_WARNINGS=$PROCESS_WARNINGS"
+    echo "PROCESS_CRITICALS=$PROCESS_CRITICALS"
 }

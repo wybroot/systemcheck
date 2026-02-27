@@ -2,9 +2,9 @@
 
 check_system() {
     local result=""
-    local status="OK"
-    local warnings=""
-    local criticals=""
+    SYS_STATUS="OK"
+    SYS_WARNINGS=""
+    SYS_CRITICALS=""
     
     HOSTNAME=$(hostname 2>/dev/null || echo "未知")
     
@@ -49,10 +49,10 @@ check_system() {
     fi
     
     if [ "$NTP_SYNC" -eq 0 ] && [ -n "$NTP_STATUS" ]; then
-        if [ "$status" == "OK" ]; then
-            status="WARNING"
+        if [ "$SYS_STATUS" == "OK" ]; then
+            SYS_STATUS="WARNING"
         fi
-        warnings="$warnings, NTP可能未同步"
+        SYS_WARNINGS="$SYS_WARNINGS, NTP可能未同步"
     fi
     
     UPTIME_DAYS=0
@@ -62,10 +62,10 @@ check_system() {
     fi
     
     if [ "$UPTIME_DAYS" -lt "$UPTIME_MIN_DAYS" ] 2>/dev/null; then
-        if [ "$status" == "OK" ]; then
-            status="WARNING"
+        if [ "$SYS_STATUS" == "OK" ]; then
+            SYS_STATUS="WARNING"
         fi
-        warnings="$warnings, 系统近期已重启(运行${UPTIME_DAYS}天)"
+        SYS_WARNINGS="$SYS_WARNINGS, 系统近期已重启(运行${UPTIME_DAYS}天)"
     fi
     
     KERNEL_DMESG=""
@@ -89,7 +89,7 @@ check_system() {
         result="${result}  内核错误(最近):\n${KERNEL_DMESG}"
     fi
     
-    echo "SYS_STATUS=$status"
+    echo "SYS_STATUS=$SYS_STATUS"
     echo "HOSTNAME=$HOSTNAME"
     echo "OS_TYPE=$OS_TYPE"
     echo "OS_VERSION=$OS_VERSION"
@@ -98,6 +98,6 @@ check_system() {
     echo "SYSTEM_TIME=$SYSTEM_TIME"
     echo "UPTIME_DAYS=$UPTIME_DAYS"
     echo "SYS_RESULT=$result"
-    echo "SYS_WARNINGS=$warnings"
-    echo "SYS_CRITICALS=$criticals"
+    echo "SYS_WARNINGS=$SYS_WARNINGS"
+    echo "SYS_CRITICALS=$SYS_CRITICALS"
 }

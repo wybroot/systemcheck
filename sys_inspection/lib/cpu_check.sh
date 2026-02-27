@@ -2,9 +2,9 @@
 
 check_cpu() {
     local result=""
-    local status="OK"
-    local warnings=""
-    local criticals=""
+    CPU_STATUS="OK"
+    CPU_WARNINGS=""
+    CPU_CRITICALS=""
     
     if has_dep "lscpu" && ! use_alt "lscpu"; then
         CPU_CORES=$(lscpu 2>/dev/null | grep "^CPU(s):" | awk '{print $2}')
@@ -73,19 +73,19 @@ check_cpu() {
     
     if has_dep "bc" && ! use_alt "bc"; then
         if (( $(echo "$CPU_USAGE > $CPU_USAGE_CRITICAL" | bc -l 2>/dev/null) )); then
-            status="CRITICAL"
-            criticals="CPU使用率 ${CPU_USAGE}% 超过临界阈值 ${CPU_USAGE_CRITICAL}%"
+            CPU_STATUS="CRITICAL"
+            CPU_CRITICALS="CPU使用率 ${CPU_USAGE}% 超过临界阈值 ${CPU_USAGE_CRITICAL}%"
         elif (( $(echo "$CPU_USAGE > $CPU_USAGE_WARNING" | bc -l 2>/dev/null) )); then
-            status="WARNING"
-            warnings="CPU使用率 ${CPU_USAGE}% 超过警告阈值 ${CPU_USAGE_WARNING}%"
+            CPU_STATUS="WARNING"
+            CPU_WARNINGS="CPU使用率 ${CPU_USAGE}% 超过警告阈值 ${CPU_USAGE_WARNING}%"
         fi
         
         if (( $(echo "$LOAD_1MIN > $LOAD_CRITICAL" | bc -l 2>/dev/null) )); then
-            [ "$status" != "CRITICAL" ] && status="CRITICAL"
-            criticals="$criticals, 系统负载 ${LOAD_1MIN} 超过临界阈值"
+            [ "$CPU_STATUS" != "CRITICAL" ] && CPU_STATUS="CRITICAL"
+            CPU_CRITICALS="$CPU_CRITICALS, 系统负载 ${LOAD_1MIN} 超过临界阈值"
         elif (( $(echo "$LOAD_1MIN > $LOAD_WARNING" | bc -l 2>/dev/null) )); then
-            [ "$status" == "OK" ] && status="WARNING"
-            warnings="$warnings, 系统负载 ${LOAD_1MIN} 超过警告阈值"
+            [ "$CPU_STATUS" == "OK" ] && CPU_STATUS="WARNING"
+            CPU_WARNINGS="$CPU_WARNINGS, 系统负载 ${LOAD_1MIN} 超过警告阈值"
         fi
     else
         local cpu_usage_int=${CPU_USAGE%.*}
@@ -94,19 +94,19 @@ check_cpu() {
         local load_critical_int=${LOAD_CRITICAL%.*}
         
         if [ "$cpu_usage_int" -gt "$CPU_USAGE_CRITICAL" ] 2>/dev/null; then
-            status="CRITICAL"
-            criticals="CPU使用率 ${CPU_USAGE}% 超过临界阈值 ${CPU_USAGE_CRITICAL}%"
+            CPU_STATUS="CRITICAL"
+            CPU_CRITICALS="CPU使用率 ${CPU_USAGE}% 超过临界阈值 ${CPU_USAGE_CRITICAL}%"
         elif [ "$cpu_usage_int" -gt "$CPU_USAGE_WARNING" ] 2>/dev/null; then
-            status="WARNING"
-            warnings="CPU使用率 ${CPU_USAGE}% 超过警告阈值 ${CPU_USAGE_WARNING}%"
+            CPU_STATUS="WARNING"
+            CPU_WARNINGS="CPU使用率 ${CPU_USAGE}% 超过警告阈值 ${CPU_USAGE_WARNING}%"
         fi
         
         if [ "$load_1min_int" -gt "$load_critical_int" ] 2>/dev/null; then
-            [ "$status" != "CRITICAL" ] && status="CRITICAL"
-            criticals="$criticals, 系统负载 ${LOAD_1MIN} 超过临界阈值"
+            [ "$CPU_STATUS" != "CRITICAL" ] && CPU_STATUS="CRITICAL"
+            CPU_CRITICALS="$CPU_CRITICALS, 系统负载 ${LOAD_1MIN} 超过临界阈值"
         elif [ "$load_1min_int" -gt "$load_warning_int" ] 2>/dev/null; then
-            [ "$status" == "OK" ] && status="WARNING"
-            warnings="$warnings, 系统负载 ${LOAD_1MIN} 超过警告阈值"
+            [ "$CPU_STATUS" == "OK" ] && CPU_STATUS="WARNING"
+            CPU_WARNINGS="$CPU_WARNINGS, 系统负载 ${LOAD_1MIN} 超过警告阈值"
         fi
     fi
     
@@ -124,13 +124,14 @@ check_cpu() {
     result="${result}  负载阈值: 警告=${LOAD_WARNING} 临界=${LOAD_CRITICAL}\n"
     result="${result}  TOP5 CPU进程:\n${TOP_CPU_PROCESSES}"
     
-    echo "CPU_STATUS=$status"
+    echo "CPU_STATUS=$CPU_STATUS"
     echo "CPU_CORES=$CPU_CORES"
     echo "CPU_USAGE=$CPU_USAGE"
+    echo "CPU_MODEL=$CPU_MODEL"
     echo "LOAD_1MIN=$LOAD_1MIN"
     echo "LOAD_5MIN=$LOAD_5MIN"
     echo "LOAD_15MIN=$LOAD_15MIN"
     echo "CPU_RESULT=$result"
-    echo "CPU_WARNINGS=$warnings"
-    echo "CPU_CRITICALS=$criticals"
+    echo "CPU_WARNINGS=$CPU_WARNINGS"
+    echo "CPU_CRITICALS=$CPU_CRITICALS"
 }
