@@ -3,6 +3,7 @@ from datetime import timedelta
 from flask import current_app
 from . import redis_client
 
+
 class RedisService:
     CACHE_PREFIX = 'inspect:'
     
@@ -50,9 +51,17 @@ class RedisService:
         if not redis_client:
             return False
         try:
-            keys = redis_client.keys(f"{RedisService.CACHE_PREFIX}{pattern}")
-            if keys:
-                redis_client.delete(*keys)
+            cursor = 0
+            while True:
+                cursor, keys = redis_client.scan(
+                    cursor=cursor,
+                    match=f"{RedisService.CACHE_PREFIX}{pattern}",
+                    count=100
+                )
+                if keys:
+                    redis_client.delete(*keys)
+                if cursor == 0:
+                    break
             return True
         except Exception as e:
             current_app.logger.error(f"Redis delete_pattern error: {e}")
@@ -63,7 +72,7 @@ class RedisService:
         return RedisService.get(f"server:{server_id}")
     
     @staticmethod
-    def set_server_cache(server_id, data, expire=60):
+    def set_server_cache(server_id, data, expire=300):
         return RedisService.set(f"server:{server_id}", data, expire)
     
     @staticmethod
@@ -71,7 +80,7 @@ class RedisService:
         return RedisService.get("dashboard")
     
     @staticmethod
-    def set_dashboard_cache(data, expire=30):
+    def set_dashboard_cache(data, expire=60):
         return RedisService.set("dashboard", data, expire)
     
     @staticmethod
@@ -79,7 +88,7 @@ class RedisService:
         return RedisService.get(f"inspection:{inspection_id}")
     
     @staticmethod
-    def set_inspection_cache(inspection_id, data, expire=300):
+    def set_inspection_cache(inspection_id, data, expire=600):
         return RedisService.set(f"inspection:{inspection_id}", data, expire)
     
     @staticmethod

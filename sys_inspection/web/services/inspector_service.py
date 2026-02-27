@@ -4,8 +4,15 @@ import subprocess
 import threading
 from datetime import datetime
 from flask import current_app
-from .. import db
+from .. import db, validate_ip
 from ..models import Server, Inspection, InspectionItem, Alert
+
+
+def sanitize_for_shell(value):
+    if not value:
+        return ''
+    return re.sub(r'[^\w\.\-]', '', str(value))
+
 
 class InspectorService:
     
@@ -76,18 +83,36 @@ class InspectorService:
                     callback(None, 'Server not found')
                 return None, 'Server not found'
             
+            if not validate_ip(server.ip):
+                if callback:
+                    callback(None, 'Invalid IP address')
+                return None, 'Invalid IP address'
+            
             start_time = datetime.utcnow()
             
             try:
                 script_path = current_app.config.get('INSPECT_SCRIPT_PATH', 'inspect.sh')
                 timeout = current_app.config.get('INSPECT_TIMEOUT', 300)
                 
+                if not os.path.exists(script_path):
+                    if callback:
+                        callback(None, 'Inspect script not found')
+                    return None, 'Inspect script not found'
+                
+                sanitized_ip = sanitize_for_shell(server.ip)
+                
                 env = os.environ.copy()
                 env['SERVERS_FILE'] = ''
                 
+                if server.ssh_password:
+                    env['SSH_PASSWORD'] = server.ssh_password
+                
                 cmd = [
                     script_path,
-                    server.ip
+                    '--host', sanitized_ip,
+                    '--port', str(server.ssh_port or 22),
+                    '--user', server.ssh_user or 'root',
+                    '--timeout', str(timeout)
                 ]
                 
                 process = subprocess.Popen(

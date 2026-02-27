@@ -4,6 +4,21 @@
 -- 创建数据库
 -- CREATE DATABASE inspect WITH ENCODING='UTF8';
 
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(32) UNIQUE NOT NULL,
+    password_hash VARCHAR(256) NOT NULL,
+    email VARCHAR(128),
+    role VARCHAR(16) DEFAULT 'user',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+
 -- 服务器信息表
 CREATE TABLE IF NOT EXISTS servers (
     id SERIAL PRIMARY KEY,
@@ -11,6 +26,7 @@ CREATE TABLE IF NOT EXISTS servers (
     ip VARCHAR(15) NOT NULL UNIQUE,
     ssh_port INTEGER DEFAULT 22,
     ssh_user VARCHAR(32) DEFAULT 'root',
+    ssh_password VARCHAR(128),
     os_type VARCHAR(32),
     os_version VARCHAR(64),
     cpu_cores INTEGER,
@@ -140,7 +156,14 @@ INSERT INTO settings (key, value, description) VALUES
 ('zombie_warning', '10', '僵尸进程警告阈值'),
 ('zombie_critical', '50', '僵尸进程临界阈值'),
 ('inspection_timeout', '300', '巡检超时时间(秒)'),
-('report_retention_days', '180', '报告保留天数');
+('report_retention_days', '180', '报告保留天数')
+ON CONFLICT (key) DO NOTHING;
+
+-- 初始化默认管理员账户 (密码: admin123)
+-- 密码使用 werkzeug.security.generate_password_hash 生成
+INSERT INTO users (username, password_hash, email, role, is_active) VALUES
+('admin', 'pbkdf2:sha256:600000$admin$e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', 'admin@localhost', 'admin', TRUE)
+ON CONFLICT (username) DO NOTHING;
 
 -- 创建更新时间触发器函数
 CREATE OR REPLACE FUNCTION update_updated_at_column()

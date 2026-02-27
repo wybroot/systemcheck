@@ -1,18 +1,35 @@
 from flask import Blueprint, render_template, jsonify, request
+from flask_login import login_required, current_user
 from ..models import Alert, Server
 from .. import db
 from datetime import datetime
+import re
+
 
 alerts_bp = Blueprint('alerts', __name__)
 
+
+def sanitize_input(value, max_length=255):
+    if not value:
+        return value
+    value = str(value).strip()
+    if len(value) > max_length:
+        value = value[:max_length]
+    return re.sub(r'[<>"\']', '', value)
+
+
 @alerts_bp.route('/')
+@login_required
 def list_alerts():
     return render_template('web/alerts.html')
 
+
 @alerts_bp.route('/api/list')
+@login_required
 def api_list():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
+    per_page = min(per_page, 100)
     status = request.args.get('status')
     level = request.args.get('level')
     server_id = request.args.get('server_id', type=int)
@@ -20,9 +37,9 @@ def api_list():
     query = Alert.query
     
     if status:
-        query = query.filter_by(status=status)
+        query = query.filter_by(status=sanitize_input(status, 16))
     if level:
-        query = query.filter_by(alert_level=level)
+        query = query.filter_by(alert_level=sanitize_input(level, 16))
     if server_id:
         query = query.filter_by(server_id=server_id)
     
@@ -38,27 +55,33 @@ def api_list():
         'pages': pagination.pages
     })
 
+
 @alerts_bp.route('/api/<int:alert_id>', methods=['GET'])
+@login_required
 def api_get(alert_id):
     alert = Alert.query.get_or_404(alert_id)
     result = alert.to_dict()
     return jsonify(result)
 
+
 @alerts_bp.route('/api/<int:alert_id>/handle', methods=['POST'])
+@login_required
 def api_handle(alert_id):
     alert = Alert.query.get_or_404(alert_id)
     data = request.get_json()
     
     alert.status = 'HANDLED'
-    alert.handler = data.get('handler', 'system')
-    alert.remark = data.get('remark', '')
+    alert.handler = sanitize_input(data.get('handler', current_user.username if current_user.is_authenticated else 'system'), 32)
+    alert.remark = sanitize_input(data.get('remark', ''), 1000)
     alert.handle_time = datetime.utcnow()
     
     db.session.commit()
     
     return jsonify(alert.to_dict())
 
+
 @alerts_bp.route('/api/<int:alert_id>/ignore', methods=['POST'])
+@login_required
 def api_ignore(alert_id):
     alert = Alert.query.get_or_404(alert_id)
     
@@ -69,17 +92,24 @@ def api_ignore(alert_id):
     
     return jsonify(alert.to_dict())
 
+
 @alerts_bp.route('/api/batch/handle', methods=['POST'])
+@login_required
 def api_batch_handle():
     data = request.get_json()
     alert_ids = data.get('alert_ids', [])
-    handler = data.get('handler', 'system')
-    remark = data.get('remark', '')
+    handler = sanitize_input(data.get('handler', current_user.username if current_user.is_authenticated else 'system'), 32)
+    remark = sanitize_input(data.get('remark', ''), 1000)
     
     if not alert_ids:
         return jsonify({'error': 'No alerts selected'}), 400
     
-    updated = Alert.query.filter(Alert.id.in_(alert_ids)).update(
+    valid_ids = [int(aid) for aid in alert_ids if str(aid).isdigit()]
+    
+    if not valid_ids:
+        return jsonify({'error': 'No valid alert IDs'}), 400
+    
+    updated = Alert.query.filter(Alert.id.in_(valid_ids)).update(
         {
             'status': 'HANDLED',
             'handler': handler,
@@ -93,7 +123,9 @@ def api_batch_handle():
     
     return jsonify({'updated': updated})
 
+
 @alerts_bp.route('/api/stats')
+@login_required
 def api_stats():
     total = Alert.query.count()
     pending = Alert.query.filter_by(status='PENDING').count()

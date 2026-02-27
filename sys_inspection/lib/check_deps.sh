@@ -26,6 +26,7 @@ DEPS_OPTIONAL=(
     ["awk"]="all"
     ["sed"]="all"
     ["grep"]="all"
+    ["sshpass"]="password_login"
 )
 
 DEPS_COMMANDS=(
@@ -48,6 +49,7 @@ DEPS_COMMANDS=(
     ["iptables"]="yum install -y iptables || apt install -y iptables"
     ["mailx"]="yum install -y mailx || apt install -y mailutils"
     ["mutt"]="yum install -y mutt || apt install -y mutt"
+    ["sshpass"]="yum install -y sshpass || apt install -y sshpass"
 )
 
 DEPS_DESC=(
@@ -70,6 +72,7 @@ DEPS_DESC=(
     ["iptables"]="防火墙工具，用于防火墙规则检查"
     ["mailx"]="邮件工具，用于发送巡检报告"
     ["mutt"]="邮件工具，用于发送巡检报告"
+    ["sshpass"]="SSH密码登录工具，用于非免密登录服务器"
 )
 
 DEPS_ALT=(

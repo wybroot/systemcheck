@@ -1,13 +1,29 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_login import LoginManager
+from flask_wtf.csrf import CSRFProtect
 import redis
 import logging
+import re
 
 db = SQLAlchemy()
 migrate = Migrate()
+login_manager = LoginManager()
+csrf = CSRFProtect()
 redis_client = None
 scheduler = None
+
+
+def validate_ip(ip_str):
+    if not ip_str:
+        return False
+    pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+    if not re.match(pattern, ip_str):
+        return False
+    parts = ip_str.split('.')
+    return all(0 <= int(part) <= 255 for part in parts)
+
 
 def create_app(config_name='default'):
     from web.config import config
@@ -21,6 +37,12 @@ def create_app(config_name='default'):
     db.init_app(app)
     migrate.init_app(app, db)
     
+    login_manager.init_app(app)
+    login_manager.login_view = 'auth.login'
+    login_manager.login_message = '请先登录'
+    
+    csrf.init_app(app)
+    
     global redis_client
     try:
         redis_client = redis.from_url(app.config['REDIS_URL'], decode_responses=True)
@@ -28,6 +50,10 @@ def create_app(config_name='default'):
         app.logger.warning(f"Redis connection failed: {e}")
         redis_client = None
     
+    from web.services.minio_service import minio_service
+    minio_service.init_app(app)
+    
+    from web.routes.auth import auth_bp
     from web.routes.main import main_bp
     from web.routes.api import api_bp
     from web.routes.servers import servers_bp
@@ -36,6 +62,7 @@ def create_app(config_name='default'):
     from web.routes.alerts import alerts_bp
     from web.routes.settings import settings_bp
     
+    app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(servers_bp, url_prefix='/servers')

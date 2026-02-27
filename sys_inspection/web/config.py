@@ -1,13 +1,27 @@
 import os
 from datetime import timedelta
+import secrets
+
+
+def get_secret_key():
+    key = os.environ.get('SECRET_KEY')
+    if not key:
+        key = secrets.token_hex(32)
+    return key
+
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'inspect-secret-key-change-in-production'
+    SECRET_KEY = get_secret_key()
     
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'postgresql://postgres:postgres@localhost:5432/inspect'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 10,
+        'pool_recycle': 3600,
+        'pool_pre_ping': True
+    }
     
     REDIS_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/0'
     
@@ -24,10 +38,15 @@ class Config:
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_TIME_LIMIT = None
+    
     INSPECT_SCRIPT_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'inspect.sh')
     INSPECT_TIMEOUT = 300
     
     PAGINATION_PER_PAGE = 20
+    
+    LOGIN_DISABLED = os.environ.get('LOGIN_DISABLED', 'false').lower() == 'true'
 
 class DevelopmentConfig(Config):
     DEBUG = True
