@@ -37,11 +37,11 @@ check_system() {
     if has_dep "ntpstat" && command -v ntpstat &>/dev/null && ! use_alt "ntpstat"; then
         NTP_OUTPUT=$(ntpstat 2>/dev/null)
         NTP_STATUS=$(echo "$NTP_OUTPUT" | head -2)
-        NTP_SYNC=$(echo "$NTP_OUTPUT" | grep -c "synchronised\|synchronized" || echo 0)
+        NTP_SYNC=$(echo "$NTP_OUTPUT" | grep -c "synchronised\|synchronized" || true)
     elif has_dep "timedatectl" && command -v timedatectl &>/dev/null && ! use_alt "timedatectl"; then
         NTP_OUTPUT=$(timedatectl status 2>/dev/null)
         NTP_STATUS=$(echo "$NTP_OUTPUT" | grep -E "NTP|System clock|Local time")
-        NTP_SYNC=$(echo "$NTP_OUTPUT" | grep -c "NTP synchronized: yes\|NTP service: active" || echo 0)
+        NTP_SYNC=$(echo "$NTP_OUTPUT" | grep -c "NTP synchronized: yes\|NTP service: active" || true)
     else
         if [ -f /proc/uptime ]; then
             NTP_STATUS="无法检测NTP状态(缺少ntpstat/timedatectl)"

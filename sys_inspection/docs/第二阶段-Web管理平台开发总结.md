@@ -1,423 +1,449 @@
-# 第二阶段：Web管理平台开发总结
+# 第二阶段（Web 管理平台）开发总结与运维手册
 
-## 一、开发概述
+> 文档目标：把“第二阶段 Web 平台”讲清楚，方便后续维护、交接、排障、扩展。  
+> 对象：后端开发、运维、测试、项目交付同学。
 
-### 1.1 开发目标
-搭建Web管理平台，实现数据持久化存储，提供可视化的服务器管理、巡检记录查询和报告查看功能。
+---
 
-### 1.2 开发周期
-- 开始时间：2026-02-27
-- 完成时间：2026-02-27
-- 实际工期：1天
+## 1. 阶段目标与交付范围
 
-### 1.3 技术选型
+第二阶段的核心目标是把第一阶段 Shell 巡检能力“平台化”：
 
-| 组件 | 选型 | 版本 | 选型理由 |
-|------|------|------|----------|
-| 后端语言 | Python | 3.11+ | 开发效率高，运维熟悉 |
-| Web框架 | Flask | 3.0 | 轻量级，灵活可控 |
-| 数据库 | PostgreSQL | 18 | 功能强大，稳定性好 |
-| 缓存 | Redis | 7 | 高性能，支持多种数据结构 |
-| 文件存储 | MinIO | 20250427 | 兼容S3，部署简单 |
-| ORM | SQLAlchemy | 2.0+ | 功能完善，支持迁移 |
-| 前端 | Bootstrap | 5.3 | 响应式，开发快速 |
-| 图表 | ECharts | 5.5+ | 功能丰富，美观 |
+1. 提供 Web 页面管理服务器资产
+2. 支持在页面触发巡检并查看历史结果
+3. 统一存储巡检记录、告警、配置
+4. 提供可扩展的调度与通知基础能力
 
-### 1.4 交付物
+本阶段交付重点：
+- Flask Web 应用（登录、仪表盘、服务器管理、巡检管理、告警、设置、定时任务）
+- REST API 能力（供页面 AJAX 与后续系统对接）
+- PostgreSQL 数据持久化
+- Redis 缓存加速
+- MinIO 报告对象存储能力
+- Docker Compose 一键部署方案
 
-| 文件/目录 | 说明 | 代码量 |
-|-----------|------|--------|
-| web/__init__.py | Flask应用工厂 | ~60行 |
-| web/config.py | 配置管理 | ~60行 |
-| web/models.py | 数据模型(6张表) | ~180行 |
-| web/routes/main.py | 主页路由 | ~15行 |
-| web/routes/api.py | REST API | ~250行 |
-| web/routes/servers.py | 服务器管理路由 | ~30行 |
-| web/routes/inspections.py | 巡检管理路由 | ~25行 |
-| web/services/minio_service.py | MinIO文件服务 | ~130行 |
-| web/services/redis_service.py | Redis缓存服务 | ~80行 |
-| web/services/inspector_service.py | 巡检执行服务 | ~200行 |
-| web/templates/base.html | 基础模板 | ~100行 |
-| web/templates/web/dashboard.html | 仪表盘页面 | ~150行 |
-| web/templates/web/servers.html | 服务器列表页面 | ~120行 |
-| web/templates/web/inspections.html | 巡检记录页面 | ~80行 |
-| web/templates/web/inspection_detail.html | 巡检详情页面 | ~100行 |
-| web/templates/web/run_inspection.html | 执行巡检页面 | ~90行 |
-| database/init.sql | 数据库初始化 | ~200行 |
-| requirements.txt | Python依赖 | ~10行 |
-| Dockerfile | Docker镜像构建 | ~20行 |
-| docker-compose.yml | Docker编排 | ~70行 |
+---
 
-## 二、架构设计
+## 2. 总体架构设计
 
-### 2.1 系统架构
+## 2.1 架构分层
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        前端展示层                            │
-│         Bootstrap 5 + ECharts + Axios + jQuery             │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        Web服务层                             │
-│                    Flask + Gunicorn                          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
-│  │main.py   │ │api.py    │ │servers.py│ │inspects.py│      │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        业务服务层                            │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                    │
-│  │Inspector │ │ MinIO    │ │  Redis   │                    │
-│  │ Service  │ │ Service  │ │ Service  │                    │
-│  └──────────┘ └──────────┘ └──────────┘                    │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        数据存储层                            │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                    │
-│  │PostgreSQL│ │  Redis   │ │  MinIO   │                    │
-│  │  (数据)  │ │  (缓存)  │ │ (文件)   │                    │
-│  └──────────┘ └──────────┘ └──────────┘                    │
-└─────────────────────────────────────────────────────────────┘
+```text
+浏览器
+  -> Flask 蓝图路由层（web/routes/*.py）
+  -> 服务层（web/services/*.py）
+  -> 数据层（SQLAlchemy + PostgreSQL）
+  -> 外部组件（Redis / MinIO / APScheduler）
 ```
 
-### 2.2 数据库设计
+## 2.2 关键组件
 
-#### 2.2.1 E-R关系图
+- Web 框架：Flask
+- ORM：Flask-SQLAlchemy
+- 数据迁移：Flask-Migrate
+- 登录鉴权：Flask-Login
+- CSRF：Flask-WTF
+- 缓存：Redis
+- 对象存储：MinIO
+- 调度：APScheduler（后台线程）
 
-```
-┌──────────┐       ┌──────────────┐       ┌────────────────┐
-│ servers  │──1:N──│ inspections  │──1:N──│inspection_items│
-└──────────┘       └──────────────┘       └────────────────┘
-     │                    │
-     │1:N                 │1:N
-     ▼                    ▼
-┌──────────┐       ┌──────────┐
-│  alerts  │       │ settings │
-└──────────┘       └──────────┘
+---
 
-┌────────────┐
-│ audit_logs │
-└────────────┘
-```
+## 3. 代码结构说明（第二阶段重点）
 
-#### 2.2.2 表结构说明
+### 3.1 应用初始化
 
-| 表名 | 说明 | 主要字段 |
-|------|------|----------|
-| servers | 服务器信息 | id, hostname, ip, ssh_port, business, env, status |
-| inspections | 巡检记录 | id, server_id, cpu_usage, memory_usage, disk_usage, status |
-| inspection_items | 巡检明细 | id, inspection_id, category, check_item, check_value, status |
-| alerts | 告警记录 | id, server_id, alert_type, alert_level, status |
-| settings | 系统配置 | id, key, value, description |
-| audit_logs | 操作日志 | id, user, action, target, detail, ip |
+`web/__init__.py`
 
-### 2.3 API设计
+职责：
+- 创建 Flask app，加载配置
+- 初始化 db/migrate/login/csrf
+- 初始化 Redis 连接与 MinIO 客户端
+- 注册蓝图
+- 启动并加载调度任务
 
-#### 2.3.1 RESTful API规范
+蓝图注册：
+- `auth`：认证与个人资料
+- `main`：首页与仪表盘
+- `api`：通用 API
+- `servers`：服务器页面
+- `inspections`：巡检页面
+- `schedule`：定时任务页面/API
+- `alerts`：告警页面/API
+- `settings`：系统设置页面/API
 
-| 资源 | GET | POST | PUT | DELETE |
-|------|-----|------|-----|--------|
-| /api/servers | 列表 | 创建 | - | - |
-| /api/servers/:id | 详情 | - | 更新 | 删除 |
-| /api/inspections | 列表 | - | - | - |
-| /api/inspections/:id | 详情 | - | - | - |
-| /api/inspections/run | - | 执行巡检 | - | - |
-| /api/alerts | 列表 | - | - | - |
-| /api/alerts/:id/handle | - | 处理 | - | - |
+### 3.2 配置文件
 
-#### 2.3.2 响应格式
+`web/config.py`
 
-```json
-// 成功响应
-{
-    "id": 1,
-    "hostname": "web-server-01",
-    "ip": "192.168.1.10"
-}
+关键默认项：
+- `SQLALCHEMY_DATABASE_URI`：默认 `postgresql://postgres:postgres@localhost:5432/inspect`
+- `REDIS_URL`：默认 `redis://localhost:6379/0`
+- `MINIO_ENDPOINT`：默认 `localhost:9000`
+- `INSPECT_SCRIPT_PATH`：项目根目录 `inspect.sh`
+- `INSPECT_TIMEOUT`：300 秒
 
-// 列表响应
-{
-    "servers": [...],
-    "total": 100,
-    "page": 1,
-    "per_page": 20,
-    "pages": 5
-}
+---
 
-// 错误响应
-{
-    "error": "错误信息"
-}
-```
+## 4. 功能模块设计与实现
 
-## 三、核心功能实现
+## 4.1 认证模块（auth）
 
-### 3.1 Flask应用工厂模式
+路由：
+- `/login` 登录
+- `/register` 注册
+- `/logout` 退出
+- `/profile` 个人资料
 
-```python
-def create_app(config_name='default'):
-    app = Flask(__name__)
-    app.config.from_object(config[config_name])
-    
-    # 初始化扩展
-    db.init_app(app)
-    migrate.init_app(app, db)
-    
-    # 注册蓝图
-    app.register_blueprint(main_bp)
-    app.register_blueprint(api_bp, url_prefix='/api')
-    
-    # 初始化调度器
-    with app.app_context():
-        SchedulerService.init_app(app)
-    
-    return app
-```
+实现要点：
+- 用户密码哈希存储（Werkzeug）
+- 登录保护使用 `@login_required`
+- 用户激活状态校验（`is_active`）
 
-### 3.2 SQLAlchemy数据模型
+## 4.2 仪表盘（main + /api/dashboard）
 
-```python
-class Server(db.Model):
-    __tablename__ = 'servers'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    hostname = db.Column(db.String(64), nullable=False)
-    ip = db.Column(db.String(15), nullable=False, unique=True)
-    
-    # 关联关系
-    inspections = db.relationship('Inspection', backref='server', lazy='dynamic')
-    alerts = db.relationship('Alert', backref='server', lazy='dynamic')
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'hostname': self.hostname,
-            'ip': self.ip,
-            # ...
-        }
-```
+页面：`/dashboard`
 
-### 3.3 Redis缓存策略
+数据来源：`/api/dashboard`
+- 总服务器数
+- 巡检总次数
+- 待处理告警数
+- 最近巡检记录
+- 按状态统计分布
 
-```python
-class RedisService:
-    # 缓存键命名规范
-    CACHE_PREFIX = 'inspect:'
-    
-    # 仪表盘数据缓存（30秒）
-    @staticmethod
-    def set_dashboard_cache(data, expire=30):
-        return RedisService.set("dashboard", data, expire)
-    
-    # 服务器信息缓存（60秒）
-    @staticmethod
-    def set_server_cache(server_id, data, expire=60):
-        return RedisService.set(f"server:{server_id}", data, expire)
-    
-    # 巡检详情缓存（5分钟）
-    @staticmethod
-    def set_inspection_cache(inspection_id, data, expire=300):
-        return RedisService.set(f"inspection:{inspection_id}", data, expire)
-```
+缓存策略：
+- 仪表盘接口优先读取 Redis 缓存
+- 缓存 TTL 60 秒
 
-### 3.4 MinIO文件存储
+## 4.3 服务器管理（servers + /api/servers）
 
-```python
-class MinIOService:
-    def upload_report(self, file_content, filename):
-        # 按日期分目录存储
-        date_prefix = datetime.now().strftime('%Y/%m/%d')
-        object_name = f"reports/{date_prefix}/{filename}"
-        
-        # 上传文件
-        self._client.put_object(
-            self._bucket,
-            object_name,
-            io.BytesIO(file_content),
-            len(file_content),
-            content_type='text/html'
-        )
-        
-        # 生成预签名URL
-        url = self._client.presigned_get_object(self._bucket, object_name)
-        return object_name, url
-```
+页面：
+- `/servers/` 列表
+- `/servers/add` 新增
+- `/servers/<id>/edit` 编辑
 
-### 3.5 巡检执行服务
+API：
+- `GET /api/servers` 分页/过滤
+- `POST /api/servers` 新建
+- `GET /api/servers/<id>` 详情
+- `PUT /api/servers/<id>` 更新
+- `DELETE /api/servers/<id>` 删除
 
-```python
-class InspectorService:
-    @staticmethod
-    def run_inspection(server_id):
-        # 1. 获取服务器信息
-        server = Server.query.get(server_id)
-        
-        # 2. 执行Shell脚本
-        cmd = [script_path, server.ip]
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        stdout, stderr = process.communicate(timeout=timeout)
-        
-        # 3. 解析输出结果
-        parsed = InspectorService.parse_inspection_output(output)
-        
-        # 4. 保存到数据库
-        inspection = Inspection(
-            server_id=server.id,
-            cpu_usage=parsed['cpu'].get('CPU_USAGE'),
-            memory_usage=parsed['memory'].get('MEM_USAGE'),
-            status=parsed['status']
-        )
-        db.session.add(inspection)
-        db.session.commit()
-```
+实现要点：
+- IP 格式校验
+- SSH 端口合法性校验（1-65535）
+- 输入内容基础清洗，避免前端注入脏数据
 
-## 四、遇到的问题与解决方案
+## 4.4 巡检执行与历史（inspections + InspectorService）
 
-### 4.1 跨平台路径问题
+页面：
+- `/inspections/` 历史列表
+- `/inspections/<id>` 详情
+- `/inspections/run` 执行页面
 
-**问题描述：**
-在Windows开发、Linux部署时，路径分隔符不同导致文件读取失败。
+API：
+- `GET /api/inspections`
+- `GET /api/inspections/<id>`
+- `POST /api/inspections/run`
 
-**解决方案：**
-使用`os.path`模块处理路径：
-```python
-import os
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(SCRIPT_DIR, 'config', 'servers.csv')
-```
+核心实现（`web/services/inspector_service.py`）：
+1. 根据 server_id 查资产
+2. 组装 `inspect.sh` 命令（单机参数）
+3. `subprocess.Popen` 调用 Shell 脚本
+4. 解析脚本输出为结构化数据
+5. 写入 `inspections`、`inspection_items`、`alerts`
 
-### 4.2 数据库连接池问题
+安全处理：
+- 命令参数做白名单清洗（IP 等字段）
+- 非法 server_id、非法 IP 直接拒绝
 
-**问题描述：**
-高并发时数据库连接数耗尽。
+## 4.5 告警模块（alerts）
 
-**解决方案：**
-1. 配置SQLAlchemy连接池参数
-2. 使用Redis缓存减少数据库查询
-3. 使用`lazy='dynamic'`延迟加载关联数据
+页面：`/alerts/`
 
-### 4.3 Shell脚本执行权限问题
+API：
+- `GET /alerts/api/list`
+- `GET /alerts/api/<id>`
+- `POST /alerts/api/<id>/handle`
+- `POST /alerts/api/<id>/ignore`
+- `POST /alerts/api/batch/handle`
+- `GET /alerts/api/stats`
 
-**问题描述：**
-Docker容器内执行Shell脚本提示权限不足。
+告警状态流转：
+- `PENDING` -> `HANDLED` / `IGNORED`
 
-**解决方案：**
-1. Dockerfile中添加权限设置
-2. 使用subprocess时正确处理环境变量
+## 4.6 定时任务模块（schedule + SchedulerService）
 
-### 4.4 时区问题
+页面：`/schedule/`
 
-**问题描述：**
-数据库时间与系统时间不一致。
+API：
+- `GET /schedule/api/list`
+- `POST /schedule/api/add`
+- `DELETE /schedule/api/remove/<job_id>`
+- `POST /schedule/api/pause/<job_id>`
+- `POST /schedule/api/resume/<job_id>`
+- `POST /schedule/api/run/<job_id>`
 
-**解决方案：**
-1. 统一使用UTC时间存储
-2. 前端展示时转换为本地时间
+任务类型：
+- `cron`（5 段表达式）
+- `interval`（分钟）
 
-## 五、部署说明
+实现要点：
+- APScheduler 后台调度器
+- 定时任务配置持久化到 `settings.key=scheduled_jobs`
+- 应用启动时自动恢复任务
 
-### 5.1 Docker Compose部署
+## 4.7 设置模块（settings）
 
-```yaml
-version: '3.8'
-services:
-  postgres:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: inspect
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "5432:5432"
+页面：`/settings/`
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
+API：
+- `GET /settings/api/list`
+- `GET|PUT /settings/api/threshold`
+- `GET|PUT /settings/api/notify`
+- `POST /settings/api/notify/test/<channel_type>`
+- `POST /settings/api/notify/channel`
+- `DELETE /settings/api/notify/channel/<channel_type>`
 
-  minio:
-    image: minio/minio:RELEASE.2025-04-27T04-17-00Z
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+能力：
+- 阈值配置（CPU/内存/磁盘/连接数/僵尸进程等）
+- 通知渠道配置与测试（钉钉/企微/邮件/Webhook）
 
-  web:
-    build: .
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/inspect
-      - REDIS_URL=redis://redis:6379/0
-    ports:
-      - "5000:5000"
-    depends_on:
-      - postgres
-      - redis
-      - minio
+---
+
+## 5. 数据模型设计
+
+模型文件：`web/models.py`
+
+主要实体：
+- `User` 用户
+- `Server` 服务器资产
+- `Inspection` 巡检主记录
+- `InspectionItem` 巡检明细项
+- `Alert` 告警记录
+- `Setting` 系统配置
+- `AuditLog` 审计日志
+
+关系摘要：
+- `Server 1 - N Inspection`
+- `Inspection 1 - N InspectionItem`
+- `Server 1 - N Alert`
+- `Inspection 1 - N Alert`
+
+---
+
+## 6. 与第一阶段 Shell 的集成方式
+
+Web 平台并不重写巡检逻辑，而是调用 `inspect.sh`：
+
+1. Web 从数据库读取单台服务器连接参数
+2. 通过 `subprocess` 执行 `inspect.sh --host ...`
+3. 读取 stdout 结果
+4. 解析 `KEY=VALUE` 格式片段
+5. 落库并生成告警
+
+优点：
+- 复用第一阶段成熟能力
+- 降低重复开发风险
+
+注意点：
+- 输出格式变化会影响解析器
+- 建议保持 Shell 输出向后兼容
+
+---
+
+## 7. API 清单（第二阶段）
+
+## 7.1 核心通用 API（`/api/*`）
+
+- 仪表盘：`GET /api/dashboard`
+- 服务器：`GET|POST /api/servers`、`GET|PUT|DELETE /api/servers/<id>`
+- 巡检：`GET /api/inspections`、`GET /api/inspections/<id>`、`POST /api/inspections/run`
+- 告警：`GET /api/alerts`、`POST /api/alerts/<id>/handle`
+- 设置：`GET /api/settings`、`GET|PUT /api/settings/<key>`
+
+## 7.2 业务分组 API
+
+- 告警组：`/alerts/api/*`
+- 调度组：`/schedule/api/*`
+- 设置组：`/settings/api/*`
+
+---
+
+## 8. 部署方案
+
+## 8.1 Docker Compose（推荐）
+
+组件：
+- Postgres
+- Redis
+- MinIO
+- Web（Gunicorn）
+- Grafana
+
+启动步骤：
+
+```bash
+cp .env.example .env
+docker-compose up -d
+docker-compose ps
 ```
 
-### 5.2 环境变量配置
+默认访问：
+- Web: `http://localhost:5000`
+- MinIO Console: `http://localhost:9001`
+- Grafana: `http://localhost:3000`
 
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| DATABASE_URL | PostgreSQL连接串 | postgresql://postgres:postgres@localhost:5432/inspect |
-| REDIS_URL | Redis连接串 | redis://localhost:6379/0 |
-| MINIO_ENDPOINT | MinIO地址 | localhost:9000 |
-| MINIO_ACCESS_KEY | MinIO访问密钥 | minioadmin |
-| MINIO_SECRET_KEY | MinIO私钥 | minioadmin |
-| SECRET_KEY | Flask密钥 | 随机字符串 |
+## 8.2 本地开发运行（可选）
 
-## 六、后续优化方向
+```bash
+pip install -r requirements.txt
+python run.py
+```
 
-### 6.1 功能增强
-- [ ] 用户认证与权限管理
-- [ ] API文档自动生成（Swagger）
-- [ ] 批量导入服务器
-- [ ] 巡检报告导出（PDF）
-- [ ] 数据备份与恢复
+---
 
-### 6.2 性能优化
-- [ ] 异步任务处理（Celery）
-- [ ] 数据库读写分离
-- [ ] 前端资源CDN加速
-- [ ] 接口响应压缩
+## 9. 配置项说明（运维重点）
 
-### 6.3 安全加固
-- [ ] HTTPS支持
-- [ ] CSRF防护
-- [ ] SQL注入防护
-- [ ] 敏感数据加密存储
+### 9.1 环境变量（摘录）
 
-## 七、经验总结
+- `SECRET_KEY`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `MINIO_ENDPOINT`
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
+- `MINIO_BUCKET`
+- `MINIO_SECURE`
+- `LOGIN_DISABLED`
 
-### 7.1 架构设计经验
-1. **分层设计**：路由层、服务层、数据层分离，职责清晰
-2. **缓存策略**：热点数据缓存，减少数据库压力
-3. **文件分离**：大文件使用MinIO存储，数据库只存引用
+### 9.2 Setting 表关键键位
 
-### 7.2 开发规范
-1. RESTful API设计规范
-2. 数据库字段命名规范
-3. 代码注释规范
-4. Git提交规范
+- 阈值类：`cpu_usage_warning`、`disk_usage_critical` 等
+- 系统类：`inspection_timeout`、`report_retention_days`
+- 通知类：`notify_channels`
+- 调度类：`scheduled_jobs`
 
-### 7.3 注意事项
-1. 数据库迁移前先备份
-2. 生产环境关闭DEBUG模式
-3. 定期清理过期数据
-4. 监控服务健康状态
+---
 
-## 八、版本记录
+## 10. 缓存与性能设计
 
-| 版本 | 日期 | 更新内容 |
-|------|------|----------|
-| v2.0.0 | 2026-02-27 | Web管理平台上线 |
-| v2.1.0 | 2026-02-27 | 增加Redis缓存、MinIO文件存储 |
+缓存服务：`web/services/redis_service.py`
+
+已实现缓存点：
+- 仪表盘缓存（60s）
+- 单机信息缓存（默认 300s）
+- 巡检详情缓存（默认 600s）
+
+失效策略：
+- 服务器增删改后调用 `clear_all_cache()`
+- 关键接口读取前优先命中缓存
+
+---
+
+## 11. 安全设计与当前边界
+
+已做：
+- 登录校验与会话管理
+- CSRF 防护
+- 输入长度与字符清洗
+- IP/端口等关键字段合法性校验
+- Shell 参数基础清洗
+
+边界与建议：
+- `ssh_password` 当前为明文字段（建议后续接入加密存储）
+- API 未做细粒度 RBAC（建议按角色拆分权限）
+- 生产环境需强制 HTTPS 与安全 Cookie 策略检查
+
+---
+
+## 12. 运维排障手册（第二阶段）
+
+## 12.1 Web 启动失败
+
+排查顺序：
+1. `docker-compose logs web`
+2. 检查 `DATABASE_URL` 是否可连通
+3. 检查 `SECRET_KEY` 是否配置
+4. 检查 Gunicorn 启动命令是否正常
+
+## 12.2 巡检触发失败
+
+排查顺序：
+1. `inspect.sh` 路径是否存在（`INSPECT_SCRIPT_PATH`）
+2. Web 进程用户是否有执行权限
+3. 目标机 SSH 连通性
+4. 查看 stderr 回传信息
+
+## 12.3 调度任务不执行
+
+排查顺序：
+1. APScheduler 是否启动（启动日志）
+2. 任务是否成功加载（`scheduled_jobs`）
+3. 任务表达式是否有效（cron/interval）
+4. 任务是否被 pause
+
+## 12.4 通知发不出去
+
+排查顺序：
+1. `notify_channels` 配置是否完整
+2. 先走“测试通知”接口验证
+3. 检查外网出口与证书问题
+
+---
+
+## 13. 测试与验收建议
+
+上线前最小验收集：
+
+1. 登录/注册/修改资料流程
+2. 服务器 CRUD + 筛选分页
+3. 单机巡检 + 批量巡检
+4. 巡检详情/明细/告警生成
+5. 告警处理、忽略、批量处理
+6. 阈值配置读写
+7. 通知渠道配置 + 测试发送
+8. 定时任务增删改停启与立即执行
+
+---
+
+## 14. 与第三阶段的衔接点
+
+第二阶段为第三阶段提供：
+- 可运营的资产、巡检、告警、配置数据模型
+- 定时任务基础能力（APScheduler）
+- 通知通道基础能力
+- Web 可视化入口
+
+第三阶段重点在此基础上强化：
+- 告警通知闭环
+- 计划任务稳定性
+- 可观测性（Grafana）
+
+---
+
+## 15. 后续优化建议（Web 阶段）
+
+1. **安全强化**
+   - SSH 密码加密存储
+   - API 权限颗粒化（admin/operator/viewer）
+2. **稳定性提升**
+   - 巡检任务异步队列化（Celery/RQ）
+   - 长任务与 Web 请求彻底解耦
+3. **可观测增强**
+   - 统一结构化日志
+   - API 性能指标与错误率监控
+4. **体验优化**
+   - 巡检实时进度
+   - 历史报告对比视图
+
+---
+
+## 16. 结论
+
+第二阶段已完成“从脚本到平台”的关键跃迁：
+- 数据有沉淀
+- 流程可视化
+- 能联动 Shell 巡检能力
+- 已具备向“定时 + 告警闭环 + 运营化”演进的技术基础
+

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_required
 
 inspections_bp = Blueprint('inspections', __name__)
@@ -22,4 +22,4 @@ def run_inspection():
 @inspections_bp.route('/history')
 @login_required
 def history():
-    return render_template('web/history.html')
+    return redirect(url_for('inspections.list_inspections'))

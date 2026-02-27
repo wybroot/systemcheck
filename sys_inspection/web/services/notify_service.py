@@ -9,6 +9,16 @@ from .. import db
 from ..models import Setting
 
 class NotifyService:
+    @staticmethod
+    def _channel_enabled(channel):
+        enabled = channel.get('enabled', True)
+        if isinstance(enabled, bool):
+            return enabled
+        if isinstance(enabled, (int, float)):
+            return enabled != 0
+        if isinstance(enabled, str):
+            return enabled.strip().lower() in ('1', 'true', 'yes', 'on')
+        return True
     
     @staticmethod
     def get_notify_config():
@@ -30,6 +40,9 @@ class NotifyService:
         channels = json.loads(config.get('notify_channels', '[]'))
         
         for channel in channels:
+            if not NotifyService._channel_enabled(channel):
+                continue
+
             channel_type = channel.get('type')
             
             if channel_type == 'dingtalk':

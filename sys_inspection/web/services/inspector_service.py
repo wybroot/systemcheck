@@ -3,7 +3,7 @@ import re
 import subprocess
 import threading
 from datetime import datetime
-from flask import current_app
+from flask import current_app, has_app_context
 from .. import db, validate_ip
 from ..models import Server, Inspection, InspectionItem, Alert
 
@@ -72,10 +72,15 @@ class InspectorService:
         return result
     
     @staticmethod
-    def run_inspection(server_id, callback=None):
-        from .. import create_app
-        app = create_app()
-        
+    def run_inspection(server_id, callback=None, app=None):
+        if app is None and has_app_context():
+            app = current_app._get_current_object()
+
+        if app is None:
+            if callback:
+                callback(None, 'Application context is required')
+            return None, 'Application context is required'
+
         with app.app_context():
             server = Server.query.get(server_id)
             if not server:
@@ -151,7 +156,7 @@ class InspectorService:
                     swap_usage=parsed['memory'].get('SWAP_USAGE'),
                     disk_usage=parsed['disk'].get('DISK_USAGE'),
                     connection_count=parsed['network'].get('CONNECTION_COUNT'),
-                    zombie_count=parsed['process'].get('ZOMBIE_COUNT'),
+                    zombie_count=parsed['process'].get('PROCESS_ZOMBIE') or parsed['process'].get('ZOMBIE_COUNT'),
                     status=parsed['status'],
                     duration=int(duration)
                 )
@@ -212,14 +217,14 @@ class InspectorService:
                 return None, str(e)
     
     @staticmethod
-    def run_batch_inspection(server_ids, callback=None):
+    def run_batch_inspection(server_ids, callback=None, app=None):
         results = {
             'success': [],
             'failed': []
         }
         
         for server_id in server_ids:
-            result, error = InspectorService.run_inspection(server_id)
+            result, error = InspectorService.run_inspection(server_id, app=app)
             if error:
                 results['failed'].append({'server_id': server_id, 'error': error})
             else:
@@ -232,9 +237,10 @@ class InspectorService:
     
     @staticmethod
     def run_inspection_async(server_id, callback=None):
+        app = current_app._get_current_object() if has_app_context() else None
         thread = threading.Thread(
             target=InspectorService.run_inspection,
-            args=(server_id, callback)
+            args=(server_id, callback, app)
         )
         thread.daemon = True
         thread.start()
@@ -242,9 +248,10 @@ class InspectorService:
     
     @staticmethod
     def run_batch_inspection_async(server_ids, callback=None):
+        app = current_app._get_current_object() if has_app_context() else None
         thread = threading.Thread(
             target=InspectorService.run_batch_inspection,
-            args=(server_ids, callback)
+            args=(server_ids, callback, app)
         )
         thread.daemon = True
         thread.start()

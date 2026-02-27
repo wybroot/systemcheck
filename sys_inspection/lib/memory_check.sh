@@ -69,7 +69,7 @@ check_memory() {
     
     OOM_CHECK=""
     if [ -f /var/log/messages ]; then
-        OOM_COUNT=$(grep -c "Out of memory" /var/log/messages 2>/dev/null || echo 0)
+        OOM_COUNT=$(grep -c "Out of memory" /var/log/messages 2>/dev/null || true)
         if [ "$OOM_COUNT" -gt 0 ]; then
             OOM_CHECK="发现 ${OOM_COUNT} 次OOM事件"
             if [ "$MEM_STATUS" == "OK" ]; then
@@ -78,7 +78,7 @@ check_memory() {
             MEM_WARNINGS="$MEM_WARNINGS, 发现OOM事件"
         fi
     elif [ -f /var/log/syslog ]; then
-        OOM_COUNT=$(grep -c "Out of memory" /var/log/syslog 2>/dev/null || echo 0)
+        OOM_COUNT=$(grep -c "Out of memory" /var/log/syslog 2>/dev/null || true)
         if [ "$OOM_COUNT" -gt 0 ]; then
             OOM_CHECK="发现 ${OOM_COUNT} 次OOM事件"
             if [ "$MEM_STATUS" == "OK" ]; then
@@ -108,9 +108,9 @@ check_memory() {
     result="${result}  TOP5 内存进程:\n${TOP_MEM_PROCESSES}"
     
     echo "MEM_STATUS=$MEM_STATUS"
-    echo "MEM_USAGE=$MEM_USAGE"
-    echo "MEM_USED=$MEM_USED"
     echo "MEM_TOTAL=$MEM_TOTAL"
+    echo "MEM_USED=$MEM_USED"
+    echo "MEM_USAGE=$MEM_USAGE"
     echo "SWAP_TOTAL=$SWAP_TOTAL"
     echo "SWAP_USED=$SWAP_USED"
     echo "SWAP_USAGE=$SWAP_USAGE"

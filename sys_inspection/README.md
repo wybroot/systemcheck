@@ -1,382 +1,288 @@
 # 服务器一键巡检系统
 
-## 项目概述
-
-服务器一键巡检系统是一个完整的服务器运维巡检解决方案，支持从跳板机批量巡检多台服务器。
-
-### 使用场景
-
-```
-┌─────────────┐      SSH       ┌─────────────┐
-│   跳板机 A   │ ──────────────→│  服务器 B   │
-│  执行脚本    │ ──────────────→│  服务器 C   │
-│             │ ──────────────→│  服务器 D   │
-└─────────────┘                └─────────────┘
-```
-
-在跳板机上执行巡检脚本，通过 SSH 远程巡检目标服务器并生成报告。
-
-### 功能特性
-
-- **三阶段架构**：Shell脚本 → Web平台 → 定时告警
-- **7大检查模块**：系统、CPU、内存、磁盘、网络、进程、安全
-- **并发巡检**：支持多服务器并发执行
-- **多种报告格式**：HTML、JSON、TEXT
-- **告警通知**：钉钉、企微、邮件、Webhook
-
-## 技术栈
-
-| 组件 | 版本 | 说明 |
-|------|------|------|
-| Shell | Bash 4+ | 巡检脚本 |
-| Python | 3.11+ | Web后端 |
-| Flask | 3.0 | Web框架 |
-| PostgreSQL | 18 | 数据库 |
-| Redis | 7 | 缓存 |
-| MinIO | Latest | 文件存储 |
-| Grafana | 11.0 | 可视化 |
+一个面向 Linux 运维巡检的项目，支持：
+- **Shell 批量巡检**（第一阶段，核心能力）
+- **Web 管理平台**（第二阶段）
+- **定时巡检与告警通知**（第三阶段）
 
 ---
 
-## 快速开始
+## 1. 项目概览
 
-### 前置条件
+### 1.1 典型使用场景
 
-1. **安装依赖工具（跳板机）**
+在堡垒机/跳板机执行 `inspect.sh`，通过 SSH 巡检多台目标主机，输出 HTML / Text / JSON 报告。
 
-```bash
-# CentOS/RHEL
-yum install -y sshpass
+### 1.2 核心能力
 
-# Ubuntu/Debian
-apt install -y sshpass
+- 多主机并发巡检（支持 `-p` 控制并发数）
+- 7 大巡检模块：`sys` / `cpu` / `mem` / `disk` / `net` / `proc` / `sec`
+- 报告输出：`html` / `text` / `json`
+- 依赖工具交互式处理（安装提示、替代方案、忽略、退出）
+- 巡检人支持运行时交互输入（`--inspector` 可直接指定）
+- 报告头部展示统一元信息：报告时间、脚本版本、巡检目标、脚本编写人、巡检人
+- Linux 兼容性增强（CRLF 自动处理，减少 `dos2unix` 依赖）
+
+---
+
+## 2. 目录结构
+
+```text
+sys_inspection/
+├── inspect.sh                      # Shell 主脚本（巡检入口）
+├── config/
+│   ├── servers.csv                 # 目标服务器清单
+│   └── threshold.conf              # 阈值配置
+├── lib/                            # 巡检模块与依赖检测
+│   ├── check_deps.sh
+│   ├── system_check.sh
+│   ├── cpu_check.sh
+│   ├── memory_check.sh
+│   ├── disk_check.sh
+│   ├── network_check.sh
+│   ├── process_check.sh
+│   └── security_check.sh
+├── reports/                        # 巡检报告输出目录
+├── logs/                           # 运行日志目录
+├── web/                            # Web 端代码
+├── docker/                         # Docker 相关配置
+├── docs/                           # 项目文档
+└── .gitattributes                  # 行尾规范（LF）
 ```
 
-2. **配置服务器清单**
+---
 
-编辑 `config/servers.csv`：
+## 3. Shell 巡检快速开始
+
+## 3.1 先决条件
+
+- 控制机可 SSH 到目标机器
+- Bash 环境可用
+- 建议安装 `sshpass`（密码登录时需要）
+- 建议目标机器有基础系统命令（`awk` / `sed` / `df` / `ps` 等）
+
+### 3.2 配置目标主机 `config/servers.csv`
 
 ```csv
 ip,hostname,ssh_port,ssh_user,ssh_password,business,env,services,tags
-192.168.1.10,web-server01,22,root,,Web服务,生产,nginx|mysql,
-192.168.1.11,db-server01,22,root,YourPassword123,数据库,生产,mysql|redis,
-192.168.1.12,app-server01,22,appuser,AppPass456,应用服务,测试,java|tomcat,
+192.168.1.10,web-01,22,root,,web,prod,nginx|php-fpm,app
+192.168.1.11,db-01,22,root,YourPass123,db,prod,mysql|redis,data
 ```
 
-**字段说明**：
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| ip | 是 | 服务器IP地址 |
-| hostname | 是 | 主机名 |
-| ssh_port | 否 | SSH端口，默认22 |
-| ssh_user | 否 | SSH用户，默认root |
-| ssh_password | 否 | SSH密码，**为空则使用免密登录** |
-| business | 否 | 业务名称 |
-| env | 否 | 环境：生产/测试/开发 |
-| services | 否 | 服务列表，用|分隔 |
-| tags | 否 | 标签 |
+字段说明：
+- `ip`：目标主机 IP（必填）
+- `hostname`：主机别名（可读性展示）
+- `ssh_port` / `ssh_user` / `ssh_password`：连接参数（可缺省使用默认值）
+- `services`：进程巡检关注的服务名（`|` 分隔）
 
-**登录方式**：
-- `ssh_password` 为空：使用 SSH 免密登录（需提前配置）
-- `ssh_password` 有值：使用密码登录（需安装 sshpass）
-
-3. **SSH免密登录配置（可选）**
-
-如果使用免密登录，需提前配置：
+### 3.3 常用命令
 
 ```bash
-# 在跳板机上生成密钥（如未生成）
-ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
-
-# 将公钥复制到目标服务器
-ssh-copy-id root@192.168.1.10
-ssh-copy-id root@192.168.1.11
-
-# 测试连接
-ssh root@192.168.1.10 "hostname"
-```
-
-### 第一阶段：Shell脚本巡检
-
-```bash
-# 巡检所有服务器（从 servers.csv 读取）
+# 巡检清单中全部主机
 ./inspect.sh -a
 
-# 巡检指定服务器
+# 巡检指定主机（通过参数）
 ./inspect.sh 192.168.1.10 192.168.1.11
 
-# 并发巡检（10个并发）
-./inspect.sh -a -p 10
+# 单机直连参数方式
+./inspect.sh --host 192.168.1.10 --user root --password 'xxx'
 
-# 只检查CPU和内存
-./inspect.sh -a -m cpu,mem
+# 指定巡检模块
+./inspect.sh -a -m cpu,mem,disk
 
-# 生成JSON报告
+# 指定报告类型
+./inspect.sh -a -r html
+./inspect.sh -a -r text
 ./inspect.sh -a -r json
 
-# 生成报告并发送邮件
-./inspect.sh -a -r html -e admin@example.com
+# 指定巡检人（不指定则运行时交互输入）
+./inspect.sh -a --inspector alice
 ```
-
-### 命令行参数
-
-| 参数 | 说明 | 示例 |
-|------|------|------|
-| `-a, --all` | 巡检所有服务器 | `./inspect.sh -a` |
-| `-f, --file` | 指定服务器清单 | `./inspect.sh -f my_servers.csv` |
-| `-o, --output` | 指定报告目录 | `./inspect.sh -a -o /tmp/reports` |
-| `-r, --report` | 报告格式：html/json/text | `./inspect.sh -a -r json` |
-| `-t, --timeout` | SSH超时时间(秒) | `./inspect.sh -a -t 60` |
-| `-p, --parallel` | 并发数量 | `./inspect.sh -a -p 10` |
-| `-m, --module` | 指定检查模块 | `./inspect.sh -a -m cpu,mem,disk` |
-| `-e, --email` | 发送邮件 | `./inspect.sh -a -e admin@xx.com` |
-| `-l, --list` | 列出服务器清单 | `./inspect.sh -l` |
-| `-v, --verbose` | 详细输出 | `./inspect.sh -a -v` |
-
-### 退出码
-
-| 退出码 | 说明 |
-|--------|------|
-| 0 | 全部正常 |
-| 1 | 存在警告 |
-| 2 | 存在严重问题 |
 
 ---
 
-## 第二阶段：Web管理平台
+## 4. inspect.sh 参数说明
 
-### Docker部署（推荐）
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `-a, --all` | 巡检清单中的全部主机 | - |
+| `-f, --file FILE` | 指定主机清单文件 | `config/servers.csv` |
+| `-o, --output DIR` | 报告输出目录 | `reports/` |
+| `-r, --report TYPE` | 报告类型：`text/html/json` | `html` |
+| `-t, --timeout SEC` | SSH 连接超时秒数 | `30` |
+| `-p, --parallel N` | 并发巡检数 | `5` |
+| `-m, --module MOD` | 模块过滤：`cpu,mem,disk,net,proc,sec,sys` | 全模块 |
+| `-e, --email ADDR` | 报告邮件发送（依赖本机邮件工具） | 空 |
+| `--host IP` | 单机巡检（绕过清单） | 空 |
+| `--port PORT` | 单机巡检端口 | `22` |
+| `--user USER` | 单机巡检用户 | `root` |
+| `--password PASS` | 单机巡检密码 | 空 |
+| `--inspector NAME` | 指定巡检人 | 交互输入/`whoami` |
+| `-l, --list` | 列出主机清单 | - |
+| `-v, --verbose` | 详细模式 | 关闭 |
+| `-h, --help` | 帮助 | - |
 
+---
+
+## 5. 依赖检查交互说明（第一步）
+
+当脚本检测到依赖缺失时，会进入交互菜单：
+
+- `[1]` 显示安装命令（手动安装后继续）
+- `[2]` 使用替代方案继续执行（功能可能受限）
+- `[3]` 显示详细说明（包含安装命令和替代方案）
+- `[4]` 忽略并继续执行（跳过依赖相关功能）
+- `[0]` 退出脚本
+
+这部分逻辑位于：`lib/check_deps.sh`
+
+---
+
+## 6. 巡检模块与阈值
+
+### 6.1 模块概览
+
+- `sys`：主机基础信息、OS、内核、运行时间
+- `cpu`：CPU 使用率、负载、核心数
+- `mem`：内存使用率、Swap 使用率
+- `disk`：磁盘使用率、磁盘详情
+- `net`：连接数、监听端口、TIME_WAIT
+- `proc`：进程总数、僵尸进程、服务状态
+- `sec`：登录失败、登录成功、防火墙、SELinux
+
+### 6.2 阈值配置文件
+
+`config/threshold.conf`
+
+可按业务情况调整 CPU、内存、磁盘、网络、进程、安全等告警阈值。
+
+---
+
+## 7. 报告说明（已做跨格式一致性）
+
+### 7.1 三种格式统一内容
+
+当前 `html` / `text` / `json` 报告均覆盖以下统一信息：
+
+- 顶部元信息
+  - 报告时间
+  - 脚本版本
+  - 巡检目标数量
+  - 脚本编写人（固定：`root_objs`）
+  - 巡检人（交互输入或 `--inspector` 指定）
+- 汇总统计
+  - 总数 / 正常 / 警告 / 严重
+  - 占比（百分比）
+- 每台主机核心信息
+  - 状态、告警摘要、严重摘要
+  - 系统信息（hostname/os/kernel 等）
+  - 核心指标（cpu/mem/swap/连接数/僵尸进程/登录失败）
+  - 模块状态（sys/cpu/mem/disk/net/proc/sec）
+  - 原始输出（raw）
+
+### 7.2 HTML 报告增强点
+
+- 更现代化卡片样式（渐变头部、模块标签、告警徽标）
+- 主机模块内字段顺序固定（跨机器统一）
+- 支持原始输出折叠展示，便于追溯
+
+### 7.3 JSON 报告结构
+
+顶层包含：
+- `report_time`
+- `version`
+- `script_author`
+- `inspector`
+- `summary`
+- `servers[]`
+
+`servers[]` 中包含：
+- `ip`, `hostname`, `status`, `warnings`, `criticals`
+- `system_info`
+- `core_metrics`
+- `module_status`
+- `raw_output`
+
+---
+
+## 8. 近期关键修复（Shell 阶段）
+
+- 修复 `--host` 场景下目标数组被覆盖问题
+- 修复状态聚合与展示不一致问题（新增状态归一化）
+- 修复 `LOGIN_FAIL_IPS` 解析/展示缺失
+- 修复部分命令在 `pipefail` 下的统计异常（避免 `0\n0`）
+- 修复 `StrictHostKeyChecking=accept-new` 在老版本 SSH 不兼容问题
+- 修复远程脚本中 `local` 使用导致的兼容性问题
+- 修复 HTML 不同主机字段顺序不一致问题（固定输出顺序）
+- 增强跨平台行尾兼容：脚本自动处理 CRLF 依赖文件
+
+---
+
+## 9. 行尾与跨平台执行规范（重点）
+
+为避免 Linux 上频繁手动执行 `dos2unix`：
+
+- 已通过 `.gitattributes` 约束 Shell 等文件统一 `LF`
+- 主脚本引入 `source_lib()`，在 `source` 依赖脚本时自动兼容 CRLF
+
+建议：
+- Windows 编辑器启用 `LF`（不是 `CRLF`）
+- 提交前可抽检：`git diff --check`
+
+---
+
+## 10. 常见问题排查
+
+### 10.1 SSH 连接失败
+
+1. 手工验证 SSH：
 ```bash
-# 复制配置文件
-cp .env.example .env
-
-# 修改配置（生产环境必须修改密码）
-vim .env
-
-# 启动服务
-docker-compose up -d
-
-# 查看状态
-docker-compose ps
+ssh -p 22 root@192.168.1.10 "echo ok"
 ```
-
-### 服务访问
-
-| 服务 | 地址 | 默认账号 |
-|------|------|----------|
-| Web界面 | http://localhost:5000 | admin / admin123 |
-| Grafana | http://localhost:3000 | admin / admin123 |
-| MinIO | http://localhost:9001 | minioadmin / minioadmin |
-
-### Web功能
-
-- **仪表盘**：服务器状态概览
-- **服务器管理**：添加/编辑/删除服务器
-- **巡检记录**：历史巡检数据
-- **执行巡检**：Web端一键巡检
-- **告警管理**：告警查看与处理
-- **定时任务**：Cron/间隔定时巡检
-- **系统设置**：阈值/通知配置
-
----
-
-## 第三阶段：定时巡检与告警
-
-### 配置告警通道
-
-通过 Web 界面或 API 配置：
-
-**钉钉机器人：**
-```json
-{
-  "type": "dingtalk",
-  "webhook": "https://oapi.dingtalk.com/robot/send?access_token=xxx",
-  "secret": "SECxxx"
-}
-```
-
-**企业微信：**
-```json
-{
-  "type": "wecom",
-  "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
-}
-```
-
-**邮件：**
-```json
-{
-  "type": "email",
-  "smtp_host": "smtp.example.com",
-  "smtp_port": 25,
-  "smtp_user": "user@example.com",
-  "smtp_pass": "password",
-  "from_addr": "noreply@example.com",
-  "to_addrs": "admin@example.com"
-}
-```
-
-### 定时任务配置
-
-通过 Web 界面 `/schedule` 添加定时任务：
-
-- **Cron表达式**：`0 9 * * *`（每天9点）
-- **间隔执行**：每30分钟
-
----
-
-## 目录结构
-
-```
-inspect/
-├── inspect.sh                 # 巡检主脚本
-├── run.py                     # Web入口
-├── requirements.txt           # Python依赖
-├── docker-compose.yml         # Docker编排
-├── Dockerfile                 # Docker镜像
-├── .env.example               # 环境变量示例
-│
-├── config/
-│   ├── servers.csv           # 服务器清单
-│   └── threshold.conf        # 告警阈值配置
-│
-├── lib/                      # Shell检查模块
-│   ├── check_deps.sh         # 依赖检查
-│   ├── system_check.sh       # 系统检查
-│   ├── cpu_check.sh          # CPU检查
-│   ├── memory_check.sh       # 内存检查
-│   ├── disk_check.sh         # 磁盘检查
-│   ├── network_check.sh      # 网络检查
-│   ├── process_check.sh      # 进程检查
-│   └── security_check.sh     # 安全检查
-│
-├── web/                      # Web应用
-│   ├── __init__.py           # Flask工厂
-│   ├── config.py             # 配置
-│   ├── models.py             # 数据模型
-│   ├── routes/               # 路由
-│   ├── services/             # 服务
-│   └── templates/            # 模板
-│
-├── database/
-│   └── init.sql              # 数据库初始化
-│
-├── docker/
-│   └── grafana/              # Grafana配置
-│
-├── reports/                  # 巡检报告
-└── logs/                     # 日志文件
-```
-
----
-
-## 检查模块说明
-
-| 模块 | 检查项 | 告警条件 |
-|------|--------|----------|
-| system | 主机名、系统版本、内核、运行时间 | 运行时间<1天 |
-| cpu | CPU型号、核心数、使用率、负载 | 使用率>80%/95%，负载超阈值 |
-| memory | 内存总量、使用率、Swap | 使用率>85%/95%，Swap>50%/80% |
-| disk | 磁盘使用率、Inode、IO等待 | 使用率>85%/95% |
-| network | 连接数、TIME_WAIT、网关连通性 | 连接数>5000/10000，丢包>5% |
-| process | 进程总数、僵尸进程、服务状态 | 僵尸进程>10/50 |
-| security | 登录失败、SSH配置、防火墙 | 登录失败>5/10，允许Root登录 |
-
----
-
-## 阈值配置
-
-编辑 `config/threshold.conf`：
-
-```ini
-[cpu]
-CPU_USAGE_WARNING=80
-CPU_USAGE_CRITICAL=95
-LOAD_WARNING_RATIO=1.0
-LOAD_CRITICAL_RATIO=1.5
-
-[memory]
-MEM_USAGE_WARNING=85
-MEM_USAGE_CRITICAL=95
-SWAP_USAGE_WARNING=50
-SWAP_USAGE_CRITICAL=80
-
-[disk]
-DISK_USAGE_WARNING=85
-DISK_USAGE_CRITICAL=95
-
-[network]
-CONNECTION_WARNING=5000
-CONNECTION_CRITICAL=10000
-
-[process]
-ZOMBIE_PROCESS_WARNING=10
-ZOMBIE_PROCESS_CRITICAL=50
-
-[security]
-LOGIN_FAIL_WARNING=5
-LOGIN_FAIL_CRITICAL=10
-```
-
----
-
-## API接口
-
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/servers` | GET/POST | 服务器列表/创建 |
-| `/api/servers/<id>` | GET/PUT/DELETE | 服务器详情/更新/删除 |
-| `/api/inspections` | GET | 巡检记录列表 |
-| `/api/inspections/run` | POST | 执行巡检 |
-| `/api/alerts` | GET | 告警列表 |
-| `/api/alerts/<id>/handle` | POST | 处理告警 |
-| `/schedule/api/list` | GET | 定时任务列表 |
-| `/schedule/api/add` | POST | 添加定时任务 |
-| `/settings/api/threshold` | GET/PUT | 阈值设置 |
-
----
-
-## 常见问题
-
-### 1. SSH连接失败
-
+2. 若使用密码登录，确认 `sshpass` 可用
+3. 增大超时：
 ```bash
-# 检查免密登录
-ssh root@192.168.1.10 "hostname"
-
-# 检查SSH配置
-grep "PermitRootLogin\|PasswordAuthentication" /etc/ssh/sshd_config
-
-# 增加超时时间
 ./inspect.sh -a -t 60
 ```
 
-### 2. 依赖工具缺失
+### 10.2 报告里字段为空
 
-脚本会自动检测缺失工具并提供安装建议，也可使用替代方案继续执行。
+- 某些指标依赖目标机命令（例如 `ss`/`netstat`）
+- 若缺失会走替代路径，仍可能出现字段为 `-`
 
-### 3. 权限问题
+### 10.3 依赖缺失怎么选
 
-```bash
-# 确保脚本有执行权限
-chmod +x inspect.sh
-
-# 确保目标服务器允许root登录
-```
+- 运维环境推荐选 `[1]`，补齐工具后执行
+- 临时应急可选 `[2]` 或 `[4]`
+- 不确定时先看 `[3]` 详细说明
 
 ---
 
-## 版本历史
+## 11. 退出码语义
 
-| 版本 | 日期 | 更新内容 |
-|------|------|----------|
-| v1.0 | 2026-02-26 | Shell脚本批量巡检 |
-| v2.0 | 2026-02-27 | Web管理平台 |
-| v3.0 | 2026-02-27 | 定时巡检、告警通知、Grafana |
+| 退出码 | 说明 |
+|---|---|
+| `0` | 全部正常 |
+| `1` | 存在告警 |
+| `2` | 存在严重问题 |
 
 ---
 
-## 许可证
+## 12. 文档索引
 
-MIT License
+建议先看以下文档：
+
+- `docs/第一阶段-Shell巡检脚本开发总结.md`（已更新为维护手册）
+- `docs/报告格式一致性说明.md`（HTML/Text/JSON 字段映射）
+- `docs/第二阶段-Web管理平台开发总结.md`
+- `docs/第三阶段-定时巡检与告警通知开发总结.md`
+- `docs/代码审查报告.md`
+
+---
+
+## 13. 版本记录（简）
+
+| 版本 | 日期 | 说明 |
+|---|---|---|
+| v1.0.0 | 2026-02-26 | 第一阶段初版 |
+| v2.0.0 | 2026-02-27 | 稳定性与兼容性修复，报告增强，巡检人信息，格式一致性优化 |

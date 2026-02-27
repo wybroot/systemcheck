@@ -1,7 +1,7 @@
 import json
 from datetime import timedelta
 from flask import current_app
-from . import redis_client
+from .. import redis_client
 
 
 class RedisService:

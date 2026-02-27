@@ -219,22 +219,44 @@ function initCharts(data) {
 
 function runAllInspection() {
     if (confirm('确定要执行一键巡检吗？')) {
-        axios.post('/api/servers/list')
-            .then(response => {
-                const servers = response.data.servers;
-                if (servers && servers.length > 0) {
-                    const serverIds = servers.map(s => s.id);
-                    return axios.post('/api/inspections/run', { server_ids: serverIds });
+        loadAllServerIds()
+            .then(serverIds => {
+                if (!serverIds.length) {
+                    alert('暂无可巡检服务器');
+                    return null;
                 }
+                return axios.post('/api/inspections/run', { server_ids: serverIds });
             })
             .then(response => {
+                if (!response) return;
                 alert('巡检任务已提交');
                 setTimeout(loadDashboard, 2000);
             })
             .catch(error => {
-                alert('巡检失败: ' + error.message);
+                const errorMsg = error?.response?.data?.error || error.message;
+                alert('巡检失败: ' + errorMsg);
             });
     }
+}
+
+async function loadAllServerIds() {
+    const serverIds = [];
+    const perPage = 100;
+    let page = 1;
+    let pages = 1;
+
+    while (page <= pages) {
+        const response = await axios.get('/api/servers', {
+            params: { page, per_page: perPage, status: 1 }
+        });
+        const data = response.data || {};
+        const servers = data.servers || [];
+        serverIds.push(...servers.map(server => server.id));
+        pages = data.pages || 1;
+        page += 1;
+    }
+
+    return [...new Set(serverIds)];
 }
 
 loadDashboard();

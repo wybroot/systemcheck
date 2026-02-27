@@ -13,9 +13,9 @@ check_process() {
     
     if has_dep "ps" && ! use_alt "ps"; then
         PROCESS_TOTAL=$(ps aux 2>/dev/null | wc -l)
-        PROCESS_RUNNING=$(ps aux 2>/dev/null | grep -c "R\|Ss" || echo 0)
-        PROCESS_SLEEPING=$(ps aux 2>/dev/null | grep -c "S\|Sl" || echo 0)
-        ZOMBIE_COUNT=$(ps aux 2>/dev/null | grep -c "<defunct>" || echo 0)
+        PROCESS_RUNNING=$(ps aux 2>/dev/null | grep -c "R\|Ss" || true)
+        PROCESS_SLEEPING=$(ps aux 2>/dev/null | grep -c "S\|Sl" || true)
+        ZOMBIE_COUNT=$(ps aux 2>/dev/null | grep -c "<defunct>" || true)
     else
         if [ -f /proc/stat ]; then
             PROCESS_TOTAL=$(grep "procs_running\|procs_blocked" /proc/stat 2>/dev/null | awk '{sum+=$2} END {print sum}')

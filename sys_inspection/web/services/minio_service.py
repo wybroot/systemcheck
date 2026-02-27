@@ -65,7 +65,8 @@ class MinIOService:
     def get_report(self, object_name):
         if not self._client:
             return None
-        
+
+        response = None
         try:
             response = self._client.get_object(self._bucket, object_name)
             return response.read()
@@ -73,8 +74,9 @@ class MinIOService:
             current_app.logger.error(f"Failed to get report: {e}")
             return None
         finally:
-            response.close()
-            response.release_conn()
+            if response is not None:
+                response.close()
+                response.release_conn()
     
     def get_report_url(self, object_name, expires=3600):
         if not self._client:

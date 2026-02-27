@@ -160,11 +160,11 @@ check_deps() {
     if [ "$mode" == "interactive" ]; then
         echo -e "${YELLOW}请选择处理方式:${NC}"
         echo ""
-        echo "  ${GREEN}[1]${NC} 显示安装命令（由您手动安装后继续）"
-        echo "  ${GREEN}[2]${NC} 使用替代方案继续执行（功能可能受限）"
-        echo "  ${GREEN}[3]${NC} 显示详细说明（包含安装命令和替代方案）"
-        echo "  ${GREEN}[4]${NC} 忽略并继续执行（跳过缺失工具的功能）"
-        echo "  ${RED}[0]${NC} 退出脚本"
+        echo -e "  ${GREEN}[1]${NC} 显示安装命令（由您手动安装后继续）"
+        echo -e "  ${GREEN}[2]${NC} 使用替代方案继续执行（功能可能受限）"
+        echo -e "  ${GREEN}[3]${NC} 显示详细说明（包含安装命令和替代方案）"
+        echo -e "  ${GREEN}[4]${NC} 忽略并继续执行（跳过缺失工具的功能）"
+        echo -e "  ${RED}[0]${NC} 退出脚本"
         echo ""
         
         while true; do

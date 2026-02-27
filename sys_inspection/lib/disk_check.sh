@@ -33,7 +33,7 @@ check_disk() {
         done <<< "$DISK_INFO"
         
         INODE_RESULT=""
-        INODE_INFO=$(df -iP 2>/dev/null | grep -v "Filesystem" | grep -v "tmpfs" | grep -v "devtmpfs")
+        INODE_INFO=$(df -iP 2>/dev/null | tail -n +2 | grep -v "tmpfs" | grep -v "devtmpfs")
         
         while IFS= read -r line; do
             local iusage=$(echo $line | awk '{print $5}' | tr -d '%')

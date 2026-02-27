@@ -1,25 +1,64 @@
-from datetime import datetime
+import os
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from flask import current_app
+
 from .. import db
 from ..models import Server, Setting
 
 scheduler = BackgroundScheduler()
 scheduler_started = False
+scheduler_lock_fd = None
+
+try:
+    import fcntl  # Linux/Unix only
+except ImportError:  # pragma: no cover
+    fcntl = None
+
+
+def acquire_scheduler_lock():
+    """
+    Ensure only one process starts APScheduler.
+    This prevents duplicate job execution under multi-worker Gunicorn.
+    """
+    global scheduler_lock_fd
+
+    if scheduler_lock_fd is not None:
+        return True
+
+    if fcntl is None:
+        return True
+
+    lock_path = os.environ.get("SCHEDULER_LOCK_FILE", "/tmp/sys_inspection_scheduler.lock")
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return False
+
+    scheduler_lock_fd = fd
+    return True
 
 class SchedulerService:
+    _app = None
     
     @staticmethod
     def init_app(app):
         global scheduler_started
-        
-        if not scheduler_started:
-            scheduler.init_app(app)
-            scheduler.start()
-            scheduler_started = True
-            app.logger.info("Scheduler started")
+        SchedulerService._app = app
+
+        if scheduler_started:
+            return
+
+        if not acquire_scheduler_lock():
+            app.logger.info("Scheduler lock not acquired, skip startup in this process")
+            return
+
+        scheduler.start()
+        scheduler_started = True
+        app.logger.info("Scheduler started")
     
     @staticmethod
     def add_inspection_job(job_id, cron_expr, server_ids=None, callback=None):
@@ -124,7 +163,9 @@ class SchedulerService:
         from ..services.inspector_service import InspectorService
         from ..services.notify_service import NotifyService
         
-        app = current_app._get_current_object()
+        app = SchedulerService._app
+        if app is None:
+            return
         
         with app.app_context():
             app.logger.info(f"Running scheduled inspection for servers: {server_ids}")
@@ -162,13 +203,13 @@ class SchedulerService:
                             job.get('server_ids')
                         )
         except Exception as e:
-            current_app.logger.error(f"Failed to load scheduled jobs: {e}")
+            if SchedulerService._app:
+                SchedulerService._app.logger.error(f"Failed to load scheduled jobs: {e}")
     
     @staticmethod
     def save_job_config(job_id, job_config):
         try:
             import json
-            from .. import db
             
             jobs_setting = Setting.query.filter_by(key='scheduled_jobs').first()
             if not jobs_setting:
@@ -189,5 +230,37 @@ class SchedulerService:
             
             return True
         except Exception as e:
-            current_app.logger.error(f"Failed to save job config: {e}")
+            if SchedulerService._app:
+                SchedulerService._app.logger.error(f"Failed to save job config: {e}")
+            return False
+
+    @staticmethod
+    def get_job_config(job_id):
+        try:
+            import json
+            jobs_setting = Setting.query.filter_by(key='scheduled_jobs').first()
+            if not jobs_setting or not jobs_setting.value:
+                return None
+            jobs = json.loads(jobs_setting.value)
+            for job in jobs:
+                if job.get('id') == job_id:
+                    return job
+            return None
+        except Exception:
+            return None
+
+    @staticmethod
+    def remove_job_config(job_id):
+        try:
+            import json
+            jobs_setting = Setting.query.filter_by(key='scheduled_jobs').first()
+            if not jobs_setting or not jobs_setting.value:
+                return True
+            jobs = json.loads(jobs_setting.value)
+            jobs_setting.value = json.dumps([job for job in jobs if job.get('id') != job_id])
+            db.session.commit()
+            return True
+        except Exception as e:
+            if SchedulerService._app:
+                SchedulerService._app.logger.error(f"Failed to remove job config: {e}")
             return False

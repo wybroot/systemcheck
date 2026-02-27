@@ -1,3 +1,3 @@
 ip,hostname,ssh_port,ssh_user,ssh_password,business,env,services,tags
-192.168.200.110,web-server-01,22,root,root,电商平台,生产,nginx|php-fpm|mysql,web
-192.168.200.51,docker-env,22,root,Means@0325..,docker环境,开发,docker,dokcer
+192.168.37.132,web-server-01,22,root,Mc@123..,电商平台,生产,nginx|php-fpm|mysql,web
+192.168.37.131,docker-env,22,root,Mc@123..,docker环境,开发,docker,dokcer

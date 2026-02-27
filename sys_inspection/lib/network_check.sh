@@ -19,19 +19,19 @@ check_network() {
         CONNECTION_TIME_WAIT=$(ss -s 2>/dev/null | grep "time-wait" | awk '{print $2}' | head -1 || echo 0)
         CONNECTION_COUNT=${CONNECTION_ESTABLISHED:-0}
         TCP_STATES=$(ss -tan 2>/dev/null | awk 'NR>1 {count[$1]++} END {for(state in count) print state": "count[state]}')
-        TIME_WAIT_COUNT=$(ss -tan 2>/dev/null | grep -c "TIME-WAIT" || echo 0)
-        LISTEN_COUNT=$(ss -tan 2>/dev/null | grep -c "LISTEN" || echo 0)
+        TIME_WAIT_COUNT=$(ss -tan 2>/dev/null | grep -c "TIME-WAIT" || true)
+        LISTEN_COUNT=$(ss -tan 2>/dev/null | grep -c "LISTEN" || true)
     elif has_dep "netstat" && ! use_alt "netstat"; then
-        CONNECTION_ESTABLISHED=$(netstat -an 2>/dev/null | grep -c ESTABLISHED || echo 0)
-        CONNECTION_LISTEN=$(netstat -an 2>/dev/null | grep -c LISTEN || echo 0)
-        CONNECTION_TIME_WAIT=$(netstat -an 2>/dev/null | grep -c TIME_WAIT || echo 0)
+        CONNECTION_ESTABLISHED=$(netstat -an 2>/dev/null | grep -c ESTABLISHED || true)
+        CONNECTION_LISTEN=$(netstat -an 2>/dev/null | grep -c LISTEN || true)
+        CONNECTION_TIME_WAIT=$(netstat -an 2>/dev/null | grep -c TIME_WAIT || true)
         CONNECTION_COUNT=${CONNECTION_ESTABLISHED:-0}
         TCP_STATES=$(netstat -tan 2>/dev/null | awk 'NR>2 {count[$6]++} END {for(state in count) print state": "count[state]}')
-        TIME_WAIT_COUNT=$(netstat -tan 2>/dev/null | grep -c TIME_WAIT || echo 0)
-        LISTEN_COUNT=$(netstat -tan 2>/dev/null | grep -c LISTEN || echo 0)
+        TIME_WAIT_COUNT=$(netstat -tan 2>/dev/null | grep -c TIME_WAIT || true)
+        LISTEN_COUNT=$(netstat -tan 2>/dev/null | grep -c LISTEN || true)
     else
         if [ -f /proc/net/tcp ]; then
-            CONNECTION_COUNT=$(grep -c "01" /proc/net/tcp 2>/dev/null || echo 0)
+            CONNECTION_COUNT=$(grep -c "01" /proc/net/tcp 2>/dev/null || true)
             TCP_STATES="连接状态统计需要ss或netstat命令"
         else
             TCP_STATES="无法获取TCP状态(缺少ss/netstat命令)"
@@ -116,7 +116,7 @@ check_network() {
         if [ -n "$DNS_SERVERS" ]; then
             for dns in $DNS_SERVERS; do
                 if has_dep "nslookup" && ! use_alt "nslookup"; then
-                    DNS_TEST=$(nslookup baidu.com $dns 2>/dev/null | grep -c "Address" || echo 0)
+                    DNS_TEST=$(nslookup baidu.com $dns 2>/dev/null | grep -c "Address" || true)
                     if [ "$DNS_TEST" -gt 0 ]; then
                         DNS_CHECK="${DNS_CHECK}DNS ${dns}: 正常\n"
                     else
